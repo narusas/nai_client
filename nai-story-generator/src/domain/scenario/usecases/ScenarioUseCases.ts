@@ -2,7 +2,17 @@ import { Scenario, Cut, ImageData, CharacterPrompt, PromptItem, ResolutionSettin
 import { ScenarioRepository, ImageGenerationService, ImageRepository } from '../ports';
 import { v4 as uuidv4 } from 'uuid';
 
+/**
+ * 시나리오 관련 유스케이스 클래스
+ * 시나리오 관리 및 이미지 생성과 관련된 비즈니스 로직을 구현
+ */
 export class ScenarioUseCases {
+  /**
+   * 시나리오 유스케이스 생성자
+   * @param scenarioRepository 시나리오 저장소 구현체
+   * @param imageGenerationService 이미지 생성 서비스 구현체
+   * @param imageRepository 이미지 저장소 구현체
+   */
   constructor(
     private scenarioRepository: ScenarioRepository,
     private imageGenerationService: ImageGenerationService,
@@ -26,6 +36,12 @@ export class ScenarioUseCases {
     await this.scenarioRepository.deleteScenario(id);
   }
 
+  /**
+   * 컷 데이터를 기반으로 이미지 생성
+   * 컷에서 프롬프트, 해상도, 시드 등의 정보를 추출하여 이미지 생성
+   * @param cut 이미지를 생성할 컷 객체
+   * @returns 생성된 이미지 데이터 목록
+   */
   async generateImagesForCut(cut: Cut): Promise<ImageData[]> {
     if (!cut) throw new Error('Cut data is required to generate images.');
 
@@ -60,21 +76,34 @@ export class ScenarioUseCases {
       negativePrompt,
       activeCharacterPrompts,
       cut.imageCount,
-      width, // 추가
-      height, // 추가
+      width,
+      height,
       cut.seed,
       cut.otherParams
     );
     return images;
   }
 
+  /**
+   * 주어진 프롬프트와 파라미터로 이미지 생성
+   * 외부 이미지 생성 서비스를 호출하여 이미지 데이터 생성
+   * @param mainPrompt 주 프롬프트 내용
+   * @param negativePrompt 네거티브 프롬프트 (선택적)
+   * @param characterPrompts 캐릭터 프롬프트 문자열 목록 (선택적)
+   * @param imageCount 생성할 이미지 수량 (기본값 1)
+   * @param width 이미지 너비 (픽셀)
+   * @param height 이미지 높이 (픽셀)
+   * @param seed 이미지 생성 시드값 (선택적)
+   * @param otherParams 기타 추가 파라미터 (선택적)
+   * @returns 생성된 이미지 데이터 목록
+   */
   async generateImages(
     mainPrompt: string,
     negativePrompt?: string,
     characterPrompts?: string[],
     imageCount: number = 1,
-    width: number, // 추가
-    height: number, // 추가
+    width: number,
+    height: number,
     seed?: number,
     otherParams?: Record<string, any>
   ): Promise<ImageData[]> {
@@ -91,7 +120,7 @@ export class ScenarioUseCases {
     if (!this.imageGenerationService) {
       throw new Error('ImageGenerationService is not configured');
     }
-    // ImageGenerationService.generateImages 시그니처도 width, height를 받도록 수정 필요
+    
     return await this.imageGenerationService.generateImages(
       mainPrompt,
       negativePrompt,
@@ -104,26 +133,45 @@ export class ScenarioUseCases {
     );
   }
 
+  /**
+   * 특정 컷의 대표 이미지 설정
+   * @param cutId 대표 이미지를 설정할 컷 ID
+   * @param imageUrl 대표 이미지 URL
+   */
   async setRepresentativeImage(cutId: string, imageUrl: string): Promise<void> {
     await this.imageRepository.saveRepresentativeImage(cutId, imageUrl);
   }
 
+  /**
+   * 가장 최근에 열린 시나리오 조회
+   * @returns 최근에 열린 시나리오 객체 또는 없을 경우 null
+   */
   async getLastOpenedScenario(): Promise<Scenario | null> {
     return await this.scenarioRepository.getLastOpenedScenario();
   }
 
+  /**
+   * 새로운 시나리오 객체 생성
+   * 기본 설정과 하나의 기본 컷을 포함한 시나리오 생성
+   * @returns 새로운 시나리오 객체
+   */
   createNewScenario(): Scenario {
     return {
       id: uuidv4(),
       name: '새 시나리오',
-      leadingPromptItems: [], // 추가
-      trailingPromptItems: [], // 추가
+      leadingPromptItems: [], // 시나리오 전체에 적용되는 앞쪽 프롬프트 항목
+      trailingPromptItems: [], // 시나리오 전체에 적용되는 뒤쪽 프롬프트 항목
       cuts: [this.createNewCut()],
       createdAt: new Date(),
       updatedAt: new Date()
     };
   }
 
+  /**
+   * 새로운 컷 객체 생성
+   * 기본 프롬프트와 해상도 설정을 포함한 컷 생성
+   * @returns 새로운 컷 객체
+   */
   createNewCut(): Cut {
     const defaultPromptItemId = uuidv4();
     const defaultResolutionId = uuidv4();
@@ -151,7 +199,7 @@ export class ScenarioUseCases {
           enabled: true,
         }
       ],
-      // seed, otherParams는 필요시 기본값 설정
+      // seed, otherParams는 선택적 필드로 기본값은 설정하지 않음
     };
   }
 }

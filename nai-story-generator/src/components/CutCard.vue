@@ -172,7 +172,7 @@ interface Props {
   cutData: Cut;
   cutIndex: number;
   isGeneratingImage?: boolean;
-  negativePromptHistory?: string[]; // This might be deprecated or adapted later
+  negativePromptHistory?: string[]; // This might be deprecated or adapted later if NegativeHistoryModal is re-introduced
 }
 const props = defineProps<Props>();
 
@@ -181,20 +181,15 @@ const emit = defineEmits([
   'update:cutData',
   'removeCut',
   'generateImages',
-  'addCharacterPrompt', // To parent (ScenarioEditor)
-  // 'updateCharacterPrompt', // Handled internally now via localCutData then emitted as 'update:cutData'
-  // 'removeCharacterPrompt', // Handled internally
-  // 'moveCharacterPrompt',   // Handled internally
-  // 'toggleCharacterPrompt', // Handled internally
-  'updateRepresentativeImage', // To parent, if needed, or can be handled locally if it only updates localCutData
-  'selectImageForView' // To parent (ScenarioEditor)
+  'addCharacterPrompt',
+  // 'updateRepresentativeImage', // 대표 이미지 변경은 update:cutData를 통해 부모에게 전달됨
+  'selectImageForView'
 ]);
 
 const localCutData = ref<Cut | null>(null);
 
 watch(() => props.cutData, (newCutData) => {
   if (newCutData) {
-    // Ensure all potentially undefined arrays are initialized before stringifying
     const dataToCopy: Cut = {
       ...newCutData,
       mainPromptItems: newCutData.mainPromptItems || [],
@@ -210,7 +205,6 @@ watch(() => props.cutData, (newCutData) => {
 
 const updateCutData = () => {
   if (localCutData.value) {
-    // Ensure arrays are initialized if they became undefined somehow during operations
     if (!localCutData.value.mainPromptItems) localCutData.value.mainPromptItems = [];
     if (!localCutData.value.selectedResolutions) localCutData.value.selectedResolutions = [];
     if (!localCutData.value.characterPrompts) localCutData.value.characterPrompts = [];
@@ -219,13 +213,11 @@ const updateCutData = () => {
   }
 };
 
-// Toggle visibility for prompts/resolutions section
 const showPrompts = ref(true);
 const togglePromptsVisibility = () => {
   showPrompts.value = !showPrompts.value;
 };
 
-// Computed property for imageCount, linked to localCutData
 const imageCountWritable = computed({
   get: () => localCutData.value?.imageCount || 1,
   set: (value) => {
@@ -233,7 +225,7 @@ const imageCountWritable = computed({
       const newCount = Math.max(1, Math.min(10, Number(value) || 1));
       if (localCutData.value.imageCount !== newCount) {
         localCutData.value.imageCount = newCount;
-        updateCutData(); // Propagate change
+        updateCutData();
       }
     }
   },
@@ -242,7 +234,6 @@ const imageCountWritable = computed({
 // --- MainPromptItem Functions ---
 const addMainPromptItem = () => {
   if (localCutData.value) {
-    // Ensure the array exists
     if (!localCutData.value.mainPromptItems) {
       localCutData.value.mainPromptItems = [];
     }
@@ -288,7 +279,7 @@ const removeResolutionSetting = (index: number) => {
   }
 };
 
-// Placeholder for Character Prompt handlers that now update localCutData
+// --- Character Prompt Handlers (internal updates to localCutData) ---
 const handleUpdateCharacterPrompt = (charIndex: number, updatedCharPrompt: CharacterPromptType) => {
   if (localCutData.value && localCutData.value.characterPrompts) {
     localCutData.value.characterPrompts[charIndex] = updatedCharPrompt;
@@ -308,8 +299,8 @@ const handleMoveCharacterPrompt = (charIndex: number, direction: 'up' | 'down') 
     list.splice(charIndex, 1);
     if (direction === 'up') {
       list.splice(Math.max(0, charIndex - 1), 0, item);
-    } else {
-      list.splice(Math.min(list.length, charIndex + (direction === 'down' ? 1 : 0)), 0, item); 
+    } else { // 'down'
+      list.splice(Math.min(list.length, charIndex + 1), 0, item); 
     }
     updateCutData();
   }
@@ -321,19 +312,14 @@ const handleToggleCharacterPromptActive = (charIndex: number, isActive: boolean)
   }
 };
 
-
 // --- Event Handlers for Emits ---
 const emitRemoveCut = () => emit('removeCut');
 const emitGenerateImages = () => {
   if (localCutData.value) {
-    // Pass the current state of localCutData for generation
-    // ScenarioUseCases will pick the enabled/first items
     emit('generateImages', localCutData.value.id);
   }
 };
-// This emit is for ScenarioEditor to initiate adding a new character prompt to its list
 const emitAddCharacterPrompt = () => emit('addCharacterPrompt'); 
-
 
 // --- Representative Image & Image Click Handling ---
 const handleRepresentativeImagePreviewClick = () => {
@@ -348,71 +334,86 @@ const handleRepresentativeImagePreviewClick = () => {
 const handleGeneratedImageClick = (imageData: ImageData) => {
   if (localCutData.value) {
     localCutData.value.representativeImage = imageData.url;
-    // updateCutData(); // This will emit the whole cutData, which is fine.
-    // Alternatively, if only representativeImage needs to be updated in parent:
-    // emit('updateRepresentativeImage', imageData.url);
-    // For now, relying on updateCutData for simplicity if this component manages its state primarily.
     updateCutData();
   }
 };
 
 // --- Load Prompt from Generated Image ---
-// This needs to be adapted for mainPromptItems array
 const loadPromptFromGeneratedImage = (imageData: ImageData) => {
   if (localCutData.value) {
     if (!localCutData.value.mainPromptItems) {
       localCutData.value.mainPromptItems = [];
     }
-    // Option 1: Replace the first item's prompts (if exists)
-    // Option 2: Add a new item with these prompts
-    // Option 3: Let user decide or have a setting (more complex)
-    
-    // For now, let's try to update the first item if it exists, or add a new one.
-    const targetItem: PromptItem = {
-      id: uuidv4(),
+    const targetItemData = {
       prompt: imageData.mainPrompt || '',
       negativePrompt: imageData.negativePrompt || '',
-      probability: 100,
-      enabled: true
     };
 
     if (localCutData.value.mainPromptItems.length > 0) {
-      // Update first item, but preserve its ID and other properties if needed.
-      // Here, we simply replace it for simplicity, or update specific fields:
-      localCutData.value.mainPromptItems[0].prompt = targetItem.prompt;
-      localCutData.value.mainPromptItems[0].negativePrompt = targetItem.negativePrompt;
-      // Optionally, update probability and enabled status or keep them as they are.
+      localCutData.value.mainPromptItems[0].prompt = targetItemData.prompt;
+      localCutData.value.mainPromptItems[0].negativePrompt = targetItemData.negativePrompt;
+      // Optionally preserve or reset probability/enabled status for the first item
       // localCutData.value.mainPromptItems[0].enabled = true;
+      // localCutData.value.mainPromptItems[0].probability = 100;
     } else {
-      localCutData.value.mainPromptItems.push(targetItem);
+      localCutData.value.mainPromptItems.push({
+        id: uuidv4(),
+        ...targetItemData,
+        probability: 100,
+        enabled: true,
+      });
     }
 
-    // Update resolution based on the image, if desired
     if (imageData.width && imageData.height) {
       if (!localCutData.value.selectedResolutions) {
         localCutData.value.selectedResolutions = [];
       }
-      const resTarget: ResolutionSetting = {
-        id: uuidv4(),
+      const resData = {
         width: imageData.width,
         height: imageData.height,
-        probability: 100,
-        enabled: true,
       };
       if (localCutData.value.selectedResolutions.length > 0) {
-        localCutData.value.selectedResolutions[0] = { ...localCutData.value.selectedResolutions[0], ...resTarget, id: localCutData.value.selectedResolutions[0].id };
+        localCutData.value.selectedResolutions[0].width = resData.width;
+        localCutData.value.selectedResolutions[0].height = resData.height;
+        // Optionally preserve or reset probability/enabled status for the first resolution
+        // localCutData.value.selectedResolutions[0].enabled = true;
+        // localCutData.value.selectedResolutions[0].probability = 100;
       } else {
-        localCutData.value.selectedResolutions.push(resTarget);
+        localCutData.value.selectedResolutions.push({
+          id: uuidv4(),
+          ...resData,
+          probability: 100,
+          enabled: true,
+        });
       }
     }
-    
     updateCutData();
-    // Potentially emit an event to notify parent about prompt loading if needed.
   }
 };
 
-// TODO: NegativeHistoryModal logic needs to be re-evaluated for multiple PromptItems.
-// It was previously tied to a single negativePromptWritable.
+// --- NegativeHistoryModal related logic (Commented out) ---
+// const isNegativeHistoryModalVisible = ref(false);
+// const openNegativeHistoryModal = () => {
+//   // This would need to be adapted to target a specific PromptItem's negativePrompt
+//   // emit('openNegativeHistory'); 
+//   // isNegativeHistoryModalVisible.value = true;
+// };
+// const closeNegativeHistoryModal = () => {
+//   // isNegativeHistoryModalVisible.value = false;
+// };
+// const handleSelectNegativePrompt = (history: string) => {
+//   // This would need to be adapted to update a specific PromptItem's negativePrompt
+//   // For example, find the first enabled item or a designated primary item:
+//   // if (localCutData.value && localCutData.value.mainPromptItems) {
+//   //   const targetPromptItem = localCutData.value.mainPromptItems.find(item => item.enabled) || 
+//   //                          (localCutData.value.mainPromptItems.length > 0 ? localCutData.value.mainPromptItems[0] : null);
+//   //   if (targetPromptItem) {
+//   //     targetPromptItem.negativePrompt = history;
+//   //     updateCutData();
+//   //   }
+//   // }
+//   // closeNegativeHistoryModal();
+// };
 
 </script>
 
