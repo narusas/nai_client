@@ -120,21 +120,14 @@ onMounted(() => {
   const selectedImage = scenarioStore.getSelectedImage();
   const selectedImageData = scenarioStore.getSelectedImageData();
   
-  // 스토어에서 이미지를 가져올 수 없는 경우 localStorage에서 임시 이미지 확인
-  const tempImage = localStorage.getItem('temp_selected_image');
-  
   if (selectedImage) {
-    console.log('마운트 시 이미지 설정 (store):', selectedImage);
+    console.log('마운트 시 이미지 설정 (스토어):', selectedImage);
     currentImage.value = selectedImage;
-    
-    // 현재 컷의 이미지 가져오기
     loadCurrentCutImages(selectedImageData);
-  } else if (tempImage) {
-    console.log('마운트 시 이미지 설정 (localStorage):', tempImage);
-    currentImage.value = tempImage;
-    // 스토어에도 저장
-    scenarioStore.selectImage(tempImage, { url: tempImage });
   }
+  
+  // localStorage에서 임시 이미지 제거 (이전 세션의 이미지가 남아있을 수 있음)
+  localStorage.removeItem('nai-temp-image');
 });
 
 // 현재 컷의 이미지들 가져오기
@@ -161,16 +154,24 @@ function loadCurrentCutImages(selectedImageData: any) {
 
 // 시나리오 스토어에서 선택된 이미지 감시
 watch(() => scenarioStore.getSelectedImage(), (newImage) => {
+  console.log('이미지 선택 변경 감지:', newImage);
+  
   if (newImage) {
     console.log('새 이미지 선택됨:', newImage);
     currentImage.value = newImage;
-    showDownloadButton.value = false; // 새 이미지가 로드되면 다운로드 버튼 숨김
+    showDownloadButton.value = false;
     
     // 선택된 이미지 데이터 가져오기
     const selectedImageData = scenarioStore.getSelectedImageData();
     if (selectedImageData) {
       loadCurrentCutImages(selectedImageData);
     }
+  } else {
+    // 선택된 이미지가 없으면 초기화
+    console.log('이미지 초기화');
+    currentImage.value = null;
+    currentImageIndex.value = -1;
+    currentCutImages.value = [];
   }
 });
 
@@ -195,17 +196,15 @@ function handleClick(event: MouseEvent) {
     return;
   }
   
-  if (isMobile.value) {
-    console.log('이미지 뷰어 클릭 - 전체화면 토글');
-    if (props.isAppFullscreen) {
-      // App 컴포넌트에서 관리하는 전체화면 상태일 때
-      exitFullscreen(event);
-    } else if (isFullscreen.value) {
-      // 내부적으로 관리하는 전체화면 상태일 때
-      toggleFullscreen();
-    } else {
-      toggleFullscreen();
-    }
+  console.log('이미지 뷰어 클릭 - 전체화면 토글');
+  if (props.isAppFullscreen) {
+    // App 컴포넌트에서 관리하는 전체화면 상태일 때
+    exitFullscreen(event);
+  } else if (isFullscreen.value) {
+    // 내부적으로 관리하는 전체화면 상태일 때
+    toggleFullscreen();
+  } else {
+    toggleFullscreen();
   }
 }
 
@@ -423,23 +422,44 @@ function downloadImage(event: Event) {
   display: block;
 }
 
+.fullscreen .image-container {
+  position: relative;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
 .fullscreen .main-image {
-  max-width: 95vw;
-  max-height: 95vh;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
   margin: auto;
 }
 
 /* 가로 모드 스타일 */
+.landscape.fullscreen .image-container {
+  width: 100vw;
+  height: 100vh;
+}
+
 .landscape.fullscreen .main-image {
-  max-width: 95vw;
-  max-height: 90vh;
+  width: 100%;
+  height: 100%;
   object-fit: contain;
 }
 
 /* 세로 모드 스타일 */
+.fullscreen:not(.landscape) .image-container {
+  width: 100vw;
+  height: 100vh;
+}
+
 .fullscreen:not(.landscape) .main-image {
-  max-width: 90vw;
-  max-height: 95vh;
+  width: 100%;
+  height: 100%;
   object-fit: contain;
 }
 

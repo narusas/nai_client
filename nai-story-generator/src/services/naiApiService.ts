@@ -1,6 +1,8 @@
 import axios from 'axios';
 import { useNaiSettingsStore } from '../stores/naiSettings';
 import JSZip from 'jszip';
+import { saveImageToDb, getAllImagesFromDb, migrateImagesFromLocalStorage } from './imageStorageService';
+import type { CharacterPrompt as DomainCharacterPrompt } from '../domain/scenario/entities';
 
 // Novel AI API 응답 타입
 interface NaiApiResponse {
@@ -22,60 +24,104 @@ export function useNaiApiService() {
   const settingsStore = useNaiSettingsStore();
   
   // 이미지 생성 함수
-  async function generateImages(prompt: string, count: number = 1): Promise<string[]> {
-    const settings = settingsStore.getSettings();
+  async function generateImages(
+    prompt: string, 
+    count: number = 1,
+    negativePromptInput?: string, 
+    characterPromptStrings?: string[], 
+    params?: { width?: number; height?: number; seed?: number | string; [key: string]: any }
+  ): Promise<string[]> {
+    const baseSettings = settingsStore.getSettings(); 
     
-    // 인증 토큰 확인
-    const token = settings.accessToken || settings.apiKey;
+    const token = baseSettings.accessToken || baseSettings.apiKey;
     if (!token) {
       throw new Error('API 키 또는 Access Token이 설정되지 않았습니다.');
     }
     
-    // 해상도 파싱
-    const [width, height] = settings.resolution.split('x').map(Number);
+    let width: number;
+    let height: number;
+    if (params?.width !== undefined && params?.height !== undefined) {
+      width = params.width;
+      height = params.height;
+    } else {
+      const [resWidth, resHeight] = baseSettings.resolution.split('x').map(Number);
+      width = resWidth;
+      height = resHeight;
+    }
     
+    // Seed 값을 숫자로 처리하도록 수정
+    let seedAsNumber: number;
+    const seedFromParams = params?.seed;
+
+    if (seedFromParams !== undefined) {
+      const parsedSeed = typeof seedFromParams === 'string' ? parseInt(seedFromParams, 10) : seedFromParams;
+      if (!isNaN(parsedSeed)) {
+        seedAsNumber = parsedSeed;
+      } else {
+        console.warn(`Invalid seed from params: "${seedFromParams}". Using random seed.`);
+        seedAsNumber = Math.floor(Math.random() * 4294967295);
+      }
+    } else if (baseSettings.seed && String(baseSettings.seed).trim() !== "") {
+      const parsedBaseSeed = parseInt(String(baseSettings.seed), 10);
+      if (!isNaN(parsedBaseSeed)) {
+        seedAsNumber = parsedBaseSeed;
+      } else {
+        console.warn(`Invalid seed value in settings: "${baseSettings.seed}". Using random seed.`);
+        seedAsNumber = Math.floor(Math.random() * 4294967295);
+      }
+    } else {
+      seedAsNumber = Math.floor(Math.random() * 4294967295); // NAI는 0부터 (2^32 - 1) 사이의 시드를 사용
+    }
+    const currentSeedString = String(seedAsNumber); // 로그용 또는 문자열 필요시 사용
+
+    const currentNegativePrompt = negativePromptInput !== undefined ? negativePromptInput : baseSettings.negativePrompt;
+
+    const domainCharacterPrompts: DomainCharacterPrompt[] = (characterPromptStrings || []).map(pStr => ({
+      prompt: pStr,
+      center: { x: 0.5, y: 0.5 }, 
+      enabled: true, 
+      uc: '' 
+    }));
+
     try {
       console.log('이미지 생성 요청 매개변수:', {
         prompt,
-        model: settings.model,
+        model: baseSettings.model,
         width,
         height,
-        scale: settings.scale,
-        steps: settings.steps,
-        sampler: settings.sampler,
-        seed: settings.seed || 'random',
+        scale: baseSettings.scale,
+        steps: baseSettings.steps,
+        sampler: baseSettings.sampler,
+        seed: seedAsNumber,
+        negativePrompt: currentNegativePrompt,
+        characterPrompts: domainCharacterPrompts, 
         count
       });
       
-      // 이미지 생성 요청 - responseType을 'arraybuffer'로 설정하여 바이너리 데이터 처리
       let requestData: any = {};
-      const seed = settings.seed || Math.floor(Math.random() * 2147483647);
       
-      // 모델 4인 경우 캐릭터 프롬프트 구조 사용
-      if (settings.model === 'nai-diffusion-4' || settings.model === 'nai-diffusion-4-full') {
-        // 캐릭터 캡션 구성
-        const charCaptions = settings.characterPrompts.map(cp => ({
+      if (baseSettings.model === 'nai-diffusion-4' || baseSettings.model === 'nai-diffusion-4-full') {
+        const charCaptions = domainCharacterPrompts.map(cp => ({
           char_caption: cp.prompt,
           centers: [{ x: cp.center.x, y: cp.center.y }]
         }));
         
-        // 캐릭터 네거티브 캡션 구성
-        const charNegativeCaptions = settings.characterPrompts.map(cp => ({
-          char_caption: cp.uc,
+        const charNegativeCaptions = domainCharacterPrompts.map(cp => ({
+          char_caption: cp.uc, 
           centers: [{ x: cp.center.x, y: cp.center.y }]
         }));
         
         requestData = {
           input: prompt,
-          model: settings.model,
+          model: baseSettings.model,
           action: 'generate',
           parameters: {
             params_version: 3,
             width,
             height,
-            scale: settings.scale,
-            sampler: settings.sampler,
-            steps: settings.steps,
+            scale: baseSettings.scale,
+            sampler: baseSettings.sampler,
+            steps: baseSettings.steps,
             n_samples: count,
             ucPreset: 0,
             qualityToggle: true,
@@ -86,41 +132,40 @@ export function useNaiApiService() {
             cfg_rescale: 0.8,
             noise_schedule: 'karras',
             legacy_v3_extend: false,
-            use_coords: settings.useCoords,
+            use_coords: baseSettings.useCoords, 
             legacy_uc: false,
-            seed: seed,
-            characterPrompts: settings.characterPrompts,
+            seed: seedAsNumber,
             v4_prompt: {
               caption: {
                 base_caption: prompt,
                 char_captions: charCaptions
               },
-              use_coords: settings.useCoords,
-              use_order: settings.useOrder
+              use_coords: baseSettings.useCoords, 
+              use_order: baseSettings.useOrder    
             },
             v4_negative_prompt: {
               caption: {
-                base_caption: settings.negativePrompt,
+                base_caption: currentNegativePrompt, 
                 char_captions: charNegativeCaptions
               },
               legacy_uc: false
             },
-            negative_prompt: settings.negativePrompt
+            negative_prompt: currentNegativePrompt 
           }
         };
       } else {
-        // 기존 모델 요청 구조
         requestData = {
           input: prompt,
-          model: settings.model,
+          model: baseSettings.model,
           parameters: {
             width,
             height,
-            scale: settings.scale,
-            steps: settings.steps,
-            sampler: settings.sampler,
-            seed: seed,
-            n_samples: count
+            scale: baseSettings.scale,
+            steps: baseSettings.steps,
+            sampler: baseSettings.sampler,
+            seed: seedAsNumber,
+            n_samples: count,
+            negative_prompt: currentNegativePrompt 
           }
         };
       }
@@ -142,35 +187,25 @@ export function useNaiApiService() {
       console.log('응답 헤더:', response.headers);
       console.log('응답 타입:', response.headers['content-type']);
       
-      // 이미지 데이터 처리
       let images: string[] = [];
       
-      // 응답 헤더에서 콘텐츠 타입 확인
       const contentType = response.headers['content-type'];
       
       console.log('응답 데이터 처음 문자:', new Uint8Array(response.data).slice(0, 10));
       
-      // 이미지 처리
       if (contentType && contentType.includes('image/')) {
-        // 이미지 데이터를 Blob으로 변환
         const blob = new Blob([response.data], { type: contentType });
         const imageUrl = URL.createObjectURL(blob);
         images = [imageUrl];
         
         console.log('이미지 URL 생성 성공:', imageUrl);
       } 
-      // ZIP 파일 응답 처리 (binary/octet-stream 또는 application/zip)
       else if (contentType && (contentType.includes('octet-stream') || contentType.includes('application/zip'))) {
         try {
-          // JSZip을 사용하여 ZIP 파일 처리
-          console.log('ZIP 파일 추출 시도...');
           const zip = new JSZip();
-          
-          // ZIP 파일 로드
           const loadedZip = await zip.loadAsync(response.data);
           console.log('ZIP 파일 내용:', Object.keys(loadedZip.files));
           
-          // ZIP 파일에서 첫 번째 이미지 추출
           const imageFiles = Object.keys(loadedZip.files).filter(filename => 
             !loadedZip.files[filename].dir && 
             (filename.endsWith('.png') || filename.endsWith('.jpg') || filename.endsWith('.jpeg'))
@@ -179,7 +214,6 @@ export function useNaiApiService() {
           if (imageFiles.length > 0) {
             console.log('발견된 이미지 파일:', imageFiles);
             
-            // 첫 번째 이미지 파일 추출
             const imageFile = imageFiles[0];
             const imageData = await loadedZip.file(imageFile)?.async('blob');
             
@@ -190,10 +224,8 @@ export function useNaiApiService() {
               console.log('ZIP에서 이미지 추출 성공:', imageUrl);
             }
           } else {
-            // 이미지 파일이 없는 경우 모든 파일 처리 시도
             console.log('이미지 파일을 찾을 수 없음, 모든 파일 처리 시도');
             
-            // 첫 번째 파일 추출
             const firstFileName = Object.keys(loadedZip.files).find(name => !loadedZip.files[name].dir);
             
             if (firstFileName) {
@@ -209,7 +241,6 @@ export function useNaiApiService() {
         } catch (zipError) {
           console.error('ZIP 파일 처리 오류:', zipError);
           
-          // ZIP 처리 오류 시 그냥 바이너리 데이터를 이미지로 처리
           const blob = new Blob([response.data], { type: 'image/png' });
           const imageUrl = URL.createObjectURL(blob);
           images = [imageUrl];
@@ -217,15 +248,12 @@ export function useNaiApiService() {
           console.log('ZIP 처리 실패, 바이너리 데이터를 이미지로 처리:', imageUrl);
         }
       } 
-      // 테스트용 플레이스홀더 이미지 사용
       else if (contentType && contentType.includes('text/html')) {
-        // 테스트용 이미지 URL
         const placeholderImage = `https://via.placeholder.com/${width}x${height}?text=NAI+Image`;
         images = [placeholderImage];
         
         console.log('테스트용 이미지 사용:', placeholderImage);
       }
-      // JSON 응답 처리
       else {
         try {
           const text = new TextDecoder().decode(response.data);
@@ -244,21 +272,20 @@ export function useNaiApiService() {
         } catch (parseError) {
           console.error('응답 파싱 오류:', parseError);
           
-          // 파싱 오류인 경우 ZIP 파일일 수 있으므로 추출 시도
           console.log('파싱 오류 발생, ZIP 파일 추출 시도...');
           
           try {
-            // JSZip을 사용하여 ZIP 파일 처리 시도
             const zip = new JSZip();
             const loadedZip = await zip.loadAsync(response.data);
             
-            // ZIP 파일에서 첫 번째 이미지 추출
             const imageFiles = Object.keys(loadedZip.files).filter(filename => 
               !loadedZip.files[filename].dir && 
               (filename.endsWith('.png') || filename.endsWith('.jpg') || filename.endsWith('.jpeg'))
             );
             
             if (imageFiles.length > 0) {
+              console.log('발견된 이미지 파일:', imageFiles);
+              
               const imageFile = imageFiles[0];
               const imageData = await loadedZip.file(imageFile)?.async('blob');
               
@@ -269,13 +296,23 @@ export function useNaiApiService() {
                 console.log('JSON 파싱 오류 후 ZIP에서 이미지 추출 성공:', imageUrl);
               }
             } else {
-              // 이미지 파일이 없는 경우 그냥 바이너리 데이터를 이미지로 처리
-              throw new Error('이미지 파일을 찾을 수 없음');
+              console.log('이미지 파일을 찾을 수 없음, 모든 파일 처리 시도');
+              
+              const firstFileName = Object.keys(loadedZip.files).find(name => !loadedZip.files[name].dir);
+              
+              if (firstFileName) {
+                const fileData = await loadedZip.file(firstFileName)?.async('blob');
+                
+                if (fileData) {
+                  const imageUrl = URL.createObjectURL(new Blob([fileData], { type: 'image/png' }));
+                  images = [imageUrl];
+                  console.log('ZIP에서 파일 추출 성공 (이미지로 간주):', imageUrl);
+                }
+              }
             }
           } catch (zipError) {
             console.error('ZIP 처리 시도 중 오류:', zipError);
             
-            // 마지막 수단으로 바이너리 데이터를 이미지로 처리
             const blob = new Blob([response.data], { type: 'image/png' });
             const imageUrl = URL.createObjectURL(blob);
             images = [imageUrl];
@@ -284,7 +321,6 @@ export function useNaiApiService() {
         }
       }
       
-      // 이미지 저장
       if (images.length > 0) {
         await saveImagesToServer(images, prompt);
       } else {
@@ -305,22 +341,22 @@ export function useNaiApiService() {
     }
   }
   
-  // 서버에 이미지 저장 (실제 구현에서는 서버 API 호출 필요)
   async function saveImagesToServer(images: string[], prompt: string): Promise<void> {
     try {
-      // 실제 구현에서는 서버 API를 호출하여 이미지를 저장
-      // 현재는 로컬 스토리지에 저장하는 것으로 대체
-      const savedImages = JSON.parse(localStorage.getItem('nai-saved-images') || '[]');
+      const hasLocalStorageData = localStorage.getItem('nai-saved-images') !== null;
+      if (hasLocalStorageData) {
+        await migrateImagesFromLocalStorage();
+      }
       
       for (const image of images) {
-        savedImages.push({
+        await saveImageToDb({
           url: image,
           prompt,
           createdAt: new Date().toISOString()
         });
       }
       
-      localStorage.setItem('nai-saved-images', JSON.stringify(savedImages));
+      console.log('이미지가 IndexedDB에 저장되었습니다.');
     } catch (error) {
       console.error('이미지 저장 중 오류 발생:', error);
     }

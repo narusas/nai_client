@@ -1,22 +1,31 @@
 <template>
-  <div class="app-container">
-    <!-- 로딩 바 -->
-    <LoadingBar ref="loadingBar" />
-    
+  <v-app>
+    <v-app-bar app flat height="4" style="background-color: transparent; pointer-events: none;">
+      <v-progress-linear 
+        v-if="isAnyImageGenerating" 
+        indeterminate 
+        color="yellow-darken-2" 
+        style="width: 100%; pointer-events: auto;"
+      ></v-progress-linear>
+    </v-app-bar>
+
     <!-- 알림 컴포넌트 -->
     <NotificationBar ref="notificationBar" />
     
+    <!-- 프로그레스 바 -->
+    
     <!-- 헤더 제거 -->
     
-    <main class="main-container">
-      <div class="left-panel" :class="{ 'hidden': showFullscreenViewer }">
-        <!-- NAI 설정 패널 -->
-        <section class="settings-panel">
-          <div v-if="!showSettings" class="settings-toggle">
-            <button @click="toggleSettings" class="toggle-button">
-              <span class="button-icon">⚙️</span> NAI 설정
-            </button>
-          </div>
+    <v-main>
+      <main class="main-container">
+        <div class="left-panel" :class="{ 'hidden': showFullscreenViewer }">
+          <!-- NAI 설정 패널 -->
+          <section class="settings-panel">
+            <div v-if="!showSettings" class="settings-toggle">
+              <button @click="toggleSettings" class="toggle-button">
+                <span class="button-icon">⚙️</span> NAI 설정
+              </button>
+            </div>
           <NaiSettingsPanel v-else @close="toggleSettings" @save="handleSettingsSave" />
         </section>
         
@@ -39,7 +48,8 @@
         </section>
       </div>
     </main>
-  </div>
+  </v-main>
+</v-app>
 </template>
 
 <script setup lang="ts">
@@ -49,10 +59,14 @@ import ScenarioEditor from './components/ScenarioEditor.vue';
 import ImageViewer from './components/ImageViewer.vue';
 import NotificationBar from './components/NotificationBar.vue';
 import LoadingBar from './components/LoadingBar.vue';
+import { useScenarioStore } from './stores/scenario';
 
 // 컴포넌트 참조
 const notificationBar = ref<InstanceType<typeof NotificationBar> | null>(null);
 const loadingBar = ref<InstanceType<typeof LoadingBar> | null>(null);
+
+// 시나리오 스토어 초기화
+const scenarioStore = useScenarioStore();
 
 // 설정 패널 토글 상태
 const showSettings = ref(false);
@@ -73,6 +87,47 @@ watch(showFullscreenViewer, (newValue) => {
   // 전체화면 모드가 변경될 때마다 이미지 뷰어 컴포넌트 강제 리렌더링
   imageViewerKey.value++;
 });
+
+// 이미지 생성 중인지 여부를 저장하는 변수
+const isGeneratingImages = ref(false);
+
+// 이미지 생성 상태 설정 함수 (provide로 제공)
+const setGeneratingImages = (generating: boolean) => {
+  isGeneratingImages.value = generating;
+};
+
+// 시나리오 상태 변경 감시
+watch(
+  () => {
+    // 현재 시나리오 ID 가져오기
+    const currentScenarioId = scenarioStore.currentScenarioId;
+    
+    // 현재 시나리오의 컷 개수 가져오기 (안전하게 접근)
+    let cutsLength = 0;
+    const currentScenario = scenarioStore.scenarios.find(s => s.id === currentScenarioId);
+    if (currentScenario && currentScenario.cuts) {
+      cutsLength = currentScenario.cuts.length;
+    }
+    
+    return [currentScenarioId, cutsLength];
+  },
+  () => {
+    // 이미지 생성 중에는 이미지 뷰어를 초기화하지 않음
+    if (isGeneratingImages.value) {
+      console.log('이미지 생성 중: 이미지 뷰어 초기화 건너뜀');
+      return;
+    }
+    
+    console.log('시나리오 상태 변경 감지: 이미지 뷰어 초기화');
+    // 시나리오가 변경되거나 컷이 삭제되면 이미지 뷰어 초기화
+    nextTick(() => {
+      // 이미지 뷰어 컴포넌트 강제 리렌더링
+      imageViewerKey.value++;
+      // 선택된 이미지 초기화
+      scenarioStore.clearSelectedImage();
+    });
+  }
+);
 
 // 모바일 환경 감지 함수
 function checkIfMobile() {
@@ -161,6 +216,7 @@ provide('showNotification', showNotification);
 provide('startLoading', startLoading);
 provide('completeLoading', completeLoading);
 provide('cancelLoading', cancelLoading);
+provide('setGeneratingImages', setGeneratingImages);
 
 // 전역 이벤트 핸들러 등록
 onMounted(() => {
@@ -180,10 +236,11 @@ onMounted(() => {
 onUnmounted(() => {
   window.removeEventListener('resize', checkIfMobile);
 });
+
+const isAnyImageGenerating = computed(() => scenarioStore.isAnyImageGenerating);
 </script>
 
 <style scoped>
-
 .app-container {
   display: flex;
   flex-direction: column;
