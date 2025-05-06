@@ -1,0 +1,67 @@
+/* 전역 스타일 - 텍스트 및 이미지 크기 70%로 축소 */
+
+/* 루트 폰트 크기 설정 - 기본 크기의 70% */
+html {
+  font-size: 70%;
+}
+
+/* 제목 요소 크기 설정 */
+h1 {
+  font-size: 2rem;
+}
+
+h2 {
+  font-size: 1.8rem;
+}
+
+h3 {
+  font-size: 1.6rem;
+}
+
+h4 {
+  font-size: 1.4rem;
+}
+
+h5, h6 {
+  font-size: 1.2rem;
+}
+
+/* 일반 텍스트 요소 크기 설정 */
+p, span, label, button, .button {
+  font-size: 1rem;
+}
+
+/* 이미지 크기 축소 (대표 이미지 제외) */
+img:not(.representative-image) {
+  max-width: 70%;
+  max-height: 70%;
+}
+
+/* 사용자 입력 영역은 원래 크기 유지 - 기본 크기의 100% */
+textarea, input[type="text"], input[type="number"] {
+  font-size: 1.43rem; /* 1/0.7 = 1.43, 원래 크기로 복원 */
+}
+
+/* 아이콘 크기 조정 */
+.icon, i, .fa, .material-icons {
+  font-size: 1rem;
+}
+
+/* 버튼 내부 텍스트 크기 조정 */
+button {
+  font-size: 1rem;
+}
+
+/* 특정 컴포넌트 조정 */
+.scenario-header h2,
+.panel-header h2 {
+  font-size: 1.8rem;
+}
+
+.cut-title {
+  font-size: 1.4rem;
+}
+
+.settings-title {
+  font-size: 1.4rem;
+}
