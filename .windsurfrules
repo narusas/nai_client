@@ -1,0 +1,1 @@
+1. setTimeout은 쓰지말고, vue의 반응형 api들을 사용할것
