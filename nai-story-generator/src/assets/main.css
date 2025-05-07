@@ -21,6 +21,7 @@
 
 body {
   font-family: 'Noto Sans KR', 'Roboto', sans-serif;
+  font-size: 8px;
   background-color: var(--background-color);
   color: var(--text-color);
   line-height: 1.6;
@@ -162,3 +163,17 @@ input:focus, textarea:focus, select:focus {
 .shadow {
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
+
+/* Vuetify 텍스트 필드 및 텍스트 영역 내부 입력 글자 크기 조정 */
+.v-text-field .v-field__input,
+.v-textarea .v-field__input {
+  font-size: 8px !important;
+  /* line-height: normal !important; */ /* 필요시 주석 해제 */
+}
+
+/* 참고: 레이블(라벨)의 글자 크기도 줄이려면 아래 주석을 해제하고 사용하세요. */
+/*
+.v-label {
+  font-size: 8px !important;
+}
+*/

@@ -132,12 +132,13 @@ onMounted(() => {
 
 // 현재 컷의 이미지들 가져오기
 function loadCurrentCutImages(selectedImageData: any) {
-  if (!selectedImageData) return;
-  
-  // 현재 시나리오 가져오기
-  const currentScenario = scenarioStore.getCurrentScenario();
-  if (!currentScenario) return;
-  
+  const currentScenario = scenarioStore.currentScenario;
+  if (!currentScenario || !currentScenario.cuts || !selectedImageData || !selectedImageData.url) {
+    currentCutImages.value = [];
+    currentImageIndex.value = -1;
+    return;
+  }
+
   // 선택된 이미지가 있는 컷 찾기
   for (let i = 0; i < currentScenario.cuts.length; i++) {
     const cut = currentScenario.cuts[i];
@@ -159,34 +160,27 @@ watch(() => scenarioStore.getSelectedImage(), (newImage) => {
   if (newImage) {
     console.log('새 이미지 선택됨:', newImage);
     currentImage.value = newImage;
-    showDownloadButton.value = false;
+    showDownloadButton.value = false; // 새 이미지 선택 시 일단 다운로드 버튼 숨김
     
     // 선택된 이미지 데이터 가져오기
     const selectedImageData = scenarioStore.getSelectedImageData();
-    if (selectedImageData) {
+    if (selectedImageData && selectedImageData.url) {
       loadCurrentCutImages(selectedImageData);
+    } else if (!selectedImageData && newImage) {
+      // getSelectedImage()는 있는데 getSelectedImageData()가 없는 비정상적인 경우,
+      // 또는 selectedImageData에 url이 없는 경우, 이미지 뷰어만 초기화
+      console.warn('getSelectedImageData()가 null이거나 url이 없습니다. 이미지 뷰어를 초기화합니다.');
+      currentCutImages.value = [];
+      currentImageIndex.value = -1;
     }
   } else {
     // 선택된 이미지가 없으면 초기화
     console.log('이미지 초기화');
     currentImage.value = null;
-    currentImageIndex.value = -1;
     currentCutImages.value = [];
+    currentImageIndex.value = -1;
   }
-});
-
-// 전체화면 모드 변경 감시
-watch(() => props.isAppFullscreen, (isFullscreen) => {
-  console.log('전체화면 모드 변경:', isFullscreen);
-  if (isFullscreen) {
-    // 전체화면 모드일 때 현재 이미지 다시 확인
-    const selectedImage = scenarioStore.getSelectedImage();
-    if (selectedImage && !currentImage.value) {
-      console.log('전체화면 모드에서 이미지 재설정:', selectedImage);
-      currentImage.value = selectedImage;
-    }
-  }
-});
+}, { immediate: true }); 
 
 // 클릭 이벤트 처리
 function handleClick(event: MouseEvent) {

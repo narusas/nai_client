@@ -11,8 +11,12 @@
     "deploy": "npm run build-only && gh-pages -d dist"
   },
   "dependencies": {
+    "@fortawesome/fontawesome-svg-core": "^6.7.2",
+    "@fortawesome/free-solid-svg-icons": "^6.7.2",
+    "@fortawesome/vue-fontawesome": "^3.0.8",
     "@vueuse/core": "^13.1.0",
     "axios": "^1.5.0",
+    "install": "^0.13.0",
     "jszip": "^3.10.1",
     "pinia": "^2.1.6",
     "uuid": "^11.1.0",

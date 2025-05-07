@@ -128,6 +128,7 @@ NAI 설정 패널 , 시나리오 편집 섹션, 은 가로 30% 부분만 사용.
 
 ```
 시나리오 
+ -- 기본 정보 및 버튼들
  -- 선행 프롬프트
    -- 프롬프트 아이템(1~N개)
       -- 프롬프트
@@ -144,8 +145,8 @@ NAI 설정 패널 , 시나리오 편집 섹션, 은 가로 30% 부분만 사용.
    -- 대표 이미지 패널 
       -- 대표 이미지
       -- 과거 생성 이미지 목록 썸네일
-   -- 해상도 선택 패널
-   
+   -- 컷 기본 정보 및 버튼목록
+   -- 해상도 선택 패널   
     -- 메인 프롬프트 (1개만 있음)
       -- 프롬프트 아이템(1~N개)
          -- 프롬프트
@@ -181,11 +182,28 @@ NAI 설정 패널 , 시나리오 편집 섹션, 은 가로 30% 부분만 사용.
 
 
 
+현재 파일명 형식: nai_{scenarioId}_{cutId}_{imageId}.{imageFormat} (여기서 ID들은 UUID 형태)
+
+새로운 파일명 형식: nai_{간단한ScenarioId}_{cutIndex}_{타임스탬프}.{imageFormat}
+
+간단한ScenarioId: 기존 scenarioId (UUID)의 앞 10자리 사용
+cutIndex: 컷의 배열 인덱스 (0부터 시작, 2자리 숫자로 표현 - 예: 01, 02, 10)
+타임스탬프: yyyyMMdd_HHmmss 형식 (예: 20250507_181048)
+
 
 
 
 배포는 github pages를 사용하여 배포할것임. 저장소는   https://github.com/narusas/nai_client
 
 페이지 접근은 https://narusas.github.io/nai_client/
+
+
+시나리오 편집영역 전체화면 토글 버튼
+NAI 설정 요약
+   모델명
+   샘플러
+   Steps
+   CFG
+   Guidence 
 
 

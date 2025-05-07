@@ -15,6 +15,8 @@ export interface ImageGenerationService {
    * @param height 이미지 높이 (픽셀)
    * @param seed 이미지 생성 시드값 (선택적)
    * @param otherParams 기타 추가 파라미터 (선택적)
+   * @param scenarioId 시나리오 ID (선택적)
+   * @param cutIndex 컷의 인덱스 (선택적)
    * @returns 생성된 이미지 데이터 목록
    */
   generateImages(
@@ -25,6 +27,8 @@ export interface ImageGenerationService {
     width: number,
     height: number,
     seed?: number,
-    otherParams?: Record<string, any>
+    otherParams?: Record<string, any>,
+    scenarioId?: string,
+    cutIndex?: number
   ): Promise<ImageData[]>;
 }

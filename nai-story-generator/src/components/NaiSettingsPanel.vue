@@ -4,6 +4,7 @@
       <h2>NAI 설정</h2>
       <button @click="$emit('close')" class="close-button">닫기</button>
     </div>
+    
     <div class="settings-form">
       <div class="form-group">
         <label for="api-key">API 키</label>
@@ -34,16 +35,7 @@
         </select>
       </div>
       
-      <div class="form-group">
-        <label for="resolution">해상도</label>
-        <select id="resolution" v-model="settings.resolution">
-          <option value="512x768">512x768</option>
-          <option value="768x512">768x512</option>
-          <option value="640x640">640x640</option>
-          <option value="832x1216">832x1216</option>
-          <option value="1216x832">1216x832</option>
-        </select>
-      </div>
+      <!-- 해상도 설정은 시나리오/컷 단위로 관리하므로 제거됨 -->
       
       <div class="form-group">
         <label for="steps">스텝 수</label>
@@ -147,17 +139,51 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, defineEmits } from 'vue';
+import { ref, onMounted, defineEmits, watch } from 'vue';
 import { useNaiSettingsStore } from '../stores/naiSettings';
 
-const emit = defineEmits(['close', 'save']);
+const emit = defineEmits(['close', 'save', 'settings-summary']);
 
 const settingsStore = useNaiSettingsStore();
 const settings = ref(settingsStore.getSettings());
 
+// 모델 ID를 사용자 친화적인 이름으로 변환하는 함수
+function getModelDisplayName(modelId: string): string {
+  const modelNames: Record<string, string> = {
+    'nai-diffusion-4-full': 'NAI Diff 4',
+    'nai-diffusion-4-curated-preview': 'NAI Diff 4 Curated',
+    'nai-diffusion-3': 'NAI Diff 3'
+  };
+  
+  return modelNames[modelId] || modelId;
+}
+
+// 설정 요약 정보를 생성하는 함수
+function getSettingsSummary() {
+  return {
+    model: settings.value.model,
+    modelName: getModelDisplayName(settings.value.model),
+    sampler: settings.value.sampler,
+    steps: settings.value.steps,
+    cfg: settings.value.cfg_rescale,
+    guidance: settings.value.scale
+  };
+}
+
+// 설정이 변경될 때마다 요약 정보 업데이트
+watch([() => settings.value.model, () => settings.value.steps, () => settings.value.cfg_rescale, () => settings.value.scale], 
+  () => {
+    emit('settings-summary', getSettingsSummary());
+  }, 
+  { immediate: true }
+);
+
 function saveSettings() {
   settingsStore.updateSettings(settings.value);
   emit('save');
+  
+  // 설정 요약 정보 업데이트
+  emit('settings-summary', getSettingsSummary());
   
   // 알림 표시 (전역 알림 함수가 있는 경우 사용)
   if (window.showNotification) {
@@ -243,18 +269,62 @@ onMounted(() => {
   padding-bottom: 1rem;
 }
 
+.header-controls {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
 h2 {
   margin: 0;
   color: #333;
   font-size: 1.5rem;
 }
 
-.close-button {
+.close-button, .toggle-button {
   background: none;
   border: none;
   color: #666;
   cursor: pointer;
   font-size: 1rem;
+  padding: 0.3rem 0.6rem;
+  border-radius: 4px;
+  transition: background-color 0.2s ease;
+}
+
+.close-button:hover, .toggle-button:hover {
+  background-color: rgba(0, 0, 0, 0.05);
+}
+
+/* 축소된 뷰 스타일 */
+.nai-settings-panel.collapsed {
+  min-height: auto;
+}
+
+.collapsed-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  padding: 0.5rem 0;
+}
+
+.summary-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  background-color: #f0f0f0;
+  padding: 0.5rem 0.8rem;
+  border-radius: 4px;
+  font-size: 0.9rem;
+}
+
+.summary-label {
+  font-weight: bold;
+  color: #555;
+}
+
+.summary-value {
+  color: #333;
 }
 
 .settings-form {

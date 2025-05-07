@@ -1,23 +1,32 @@
 <template>
   <div class="resolution-panel">
-    <h3 class="panel-title">해상도 선택</h3>
+    
     
     <div class="resolution-list">
-      <div v-for="(resolution, index) in resolutions" :key="index" class="resolution-item">
+      <div v-for="resolution in resolutions" :key="resolution.id" class="resolution-item">
         <div class="resolution-info">
-          <span>{{ resolution.width }} x {{ resolution.height }}</span>
+          <v-switch
+            :model-value="resolution.enabled !== false"
+            @update:model-value="handleToggleEnabled(resolution.id, $event)"
+            density="compact"
+            hide-details
+            color="primary"
+            class="enabled-switch" 
+          ></v-switch>
+          <span class="resolution-dimensions">{{ resolution.width }} x {{ resolution.height }}</span>
           <input 
             type="number" 
-            v-model="resolution.probability" 
+            :value="resolution.probability" 
             min="0" 
             max="100" 
-            @input="validateProbabilities"
+            @change="handleProbabilityChange(resolution.id, Number(($event.target as HTMLInputElement).value))"
             class="probability-input"
+            :disabled="resolution.enabled === false"
           />
           <span class="probability-label">%</span>
         </div>
-        <button class="remove-btn" @click="removeResolution(index)">
-          <i class="fas fa-times"></i>
+        <button v-if="resolutions.length > 1" class="remove-btn-round" @click="removeResolution(resolution.id)">
+          <font-awesome-icon :icon="['fas', 'times']" />
         </button>
       </div>
     </div>
@@ -27,7 +36,7 @@
         <button 
           v-for="preset in presetResolutions" 
           :key="`${preset.width}x${preset.height}`"
-          @click="addPresetResolution(preset.width, preset.height)"
+          @click="fillCustomResolution(preset.width, preset.height)"
           class="preset-btn"
         >
           {{ preset.width }} x {{ preset.height }}
@@ -63,52 +72,52 @@
         </button>
       </div>
     </div>
-    
-    <div class="total-probability" :class="{ 'error': !isProbabilityValid }">
-      총 확률: {{ totalProbability }}% {{ isProbabilityValid ? '' : '(100%가 되어야 합니다)' }}
-    </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, defineProps, defineEmits } from 'vue';
+import { ref, computed, watch } from 'vue';
+import { v4 as uuidv4 } from 'uuid'; 
+import { FontAwesomeIcon } from '@fortawesome/vue-fontawesome';
+import { VSwitch } from 'vuetify/components';
 
 interface Resolution {
+  id: string; 
   width: number;
   height: number;
   probability: number;
+  enabled?: boolean; 
 }
 
 const props = defineProps<{
   modelValue: Resolution[];
+  scenarioId: string; 
+  cutId: string;      
 }>();
 
-const emit = defineEmits(['update:modelValue']);
+const emit = defineEmits(['update:modelValue', 'resolution-changed']); 
 
-// 로컬 상태 관리
-const resolutions = ref<Resolution[]>(Array.isArray(props.modelValue) ? [...props.modelValue] : [
-  { width: 1216, height: 832, probability: 100 } // 기본 해상도
-]);
+const resolutions = ref<Resolution[]>([]);
 
-// 프리셋 해상도 목록
+watch(() => props.modelValue, (newValue) => {
+  resolutions.value = JSON.parse(JSON.stringify(newValue || []));
+}, { deep: true, immediate: true }); 
+
+
 const presetResolutions = [
   { width: 1216, height: 832 },
   { width: 832, height: 1216 },
   { width: 1024, height: 1024 }
 ];
 
-// 커스텀 해상도 입력값
 const customWidth = ref<number | null>(null);
 const customHeight = ref<number | null>(null);
 
-// 커스텀 해상도 유효성 검사
 const isValidCustomResolution = computed(() => {
   if (!customWidth.value || !customHeight.value) return false;
-  
-  // 최대 픽셀 수 제한 (1216 x 832 이내)
-  const maxPixels = 1216 * 832;
+  // 1024x1024도 유효하도록 maxPixels 값 조정
+  const maxPixels = 1024 * 1024 + 1; // 1,048,576 + 1
   const currentPixels = customWidth.value * customHeight.value;
-  
   return (
     customWidth.value > 0 && 
     customHeight.value > 0 && 
@@ -118,126 +127,121 @@ const isValidCustomResolution = computed(() => {
   );
 });
 
-// 총 확률 계산
 const totalProbability = computed(() => {
-  return resolutions.value.reduce((sum, res) => sum + res.probability, 0);
+  return resolutions.value.filter(r => r.enabled !== false).reduce((sum, res) => sum + (res.probability || 0), 0);
 });
 
-// 확률 유효성 검사
 const isProbabilityValid = computed(() => {
-  return Math.abs(totalProbability.value - 100) < 0.01 || resolutions.value.length === 0;
+  const activeResolutions = resolutions.value.filter(r => r.enabled !== false);
+  if (activeResolutions.length === 0) return true;
+  const currentTotal = activeResolutions.reduce((sum, res) => sum + (res.probability || 0), 0);
+  return Math.abs(currentTotal - 100) < 0.01;
 });
 
-// 프리셋 해상도 추가
+function handleProbabilityChange(resolutionId: string, newProbability: number) {
+  const updatedProbability = Math.max(0, Math.min(100, Math.round(newProbability || 0)));
+  emit('resolution-changed', {
+    action: 'probability-change',
+    scenarioId: props.scenarioId,
+    cutId: props.cutId,
+    resolutionId,
+    probability: updatedProbability,
+  });
+}
+
+function handleToggleEnabled(resolutionId: string, isEnabled: boolean) {
+  // 해상도가 하나만 남았을 때는 비활성화 상태가 되지 않도록 처리
+  if (resolutions.value.length === 1) {
+    // 하나만 남은 경우 반드시 활성화 상태로 유지
+    isEnabled = true;
+  } else if (resolutions.value.length > 1 && !isEnabled) {
+    // 여러 해상도가 있을 때 현재 활성화된 해상도가 하나만 있는지 확인
+    const activeResolutions = resolutions.value.filter(r => r.enabled !== false && r.id !== resolutionId);
+    if (activeResolutions.length === 0) {
+      // 마지막 활성화 해상도를 비활성화하려는 경우, 비활성화 방지
+      isEnabled = true;
+    }
+  }
+  
+  emit('resolution-changed', {
+    action: 'toggle_enabled',
+    scenarioId: props.scenarioId,
+    cutId: props.cutId,
+    resolutionId,
+    enabled: isEnabled,
+  });
+}
+
+
+// 프리셋 버튼을 클릭하면 커스텀 너비와 높이 필드에 값을 채우는 함수
+function fillCustomResolution(width: number, height: number) {
+  customWidth.value = width;
+  customHeight.value = height;
+}
+
+// 기존 프리셋 추가 함수 - 직접 호출하지 않고 커스텀 필드에 값을 채운 후 추가 버튼을 클릭하도록 변경
 function addPresetResolution(width: number, height: number) {
   const exists = resolutions.value.some(
     res => res.width === width && res.height === height
   );
   
   if (!exists) {
-    const newProbability = calculateDefaultProbability();
-    resolutions.value.push({
+    const newResolutionPayload = {
       width,
       height,
-      probability: newProbability
-    });
-    validateProbabilities();
-    updateModelValue();
+    };
+    console.log('[ResolutionPanel] addPresetResolution - newResolutionPayload:', JSON.parse(JSON.stringify(newResolutionPayload)));
+
+    const payload = {
+      action: 'add',
+      scenarioId: props.scenarioId,
+      cutId: props.cutId,
+      resolutionData: newResolutionPayload, 
+    };
+    console.log('[ResolutionPanel] addPresetResolution - Emitting final payload:', JSON.parse(JSON.stringify(payload)));
+    emit('resolution-changed', payload);
   }
 }
 
-// 커스텀 해상도 추가
 function addCustomResolution() {
-  if (!isValidCustomResolution.value) return;
-  
-  const width = customWidth.value as number;
-  const height = customHeight.value as number;
-  
+  if (!isValidCustomResolution.value || !customWidth.value || !customHeight.value) {
+    console.warn('[ResolutionPanel] addCustomResolution - Invalid custom resolution or width/height is null/undefined. Width:', customWidth.value, 'Height:', customHeight.value);
+    return;
+  }
+
   const exists = resolutions.value.some(
-    res => res.width === width && res.height === height
+    res => res.width === customWidth.value && res.height === customHeight.value
   );
-  
+
   if (!exists) {
-    const newProbability = calculateDefaultProbability();
-    resolutions.value.push({
-      width,
-      height,
-      probability: newProbability
-    });
-    
-    // 입력 필드 초기화
+    const newResolutionPayload = {
+      width: customWidth.value,
+      height: customHeight.value,
+    };
+    console.log('[ResolutionPanel] addCustomResolution - newResolutionPayload:', JSON.parse(JSON.stringify(newResolutionPayload)));
+
+    const payload = {
+      action: 'add',
+      scenarioId: props.scenarioId,
+      cutId: props.cutId,
+      resolutionData: newResolutionPayload,
+    };
+    console.log('[ResolutionPanel] addCustomResolution - Emitting final payload:', JSON.parse(JSON.stringify(payload)));
+    emit('resolution-changed', payload);
     customWidth.value = null;
     customHeight.value = null;
-    
-    validateProbabilities();
-    updateModelValue();
   }
 }
 
-// 해상도 제거
-function removeResolution(index: number) {
-  resolutions.value.splice(index, 1);
-  validateProbabilities();
-  updateModelValue();
-}
-
-// 새 항목 추가 시 기본 확률 계산
-function calculateDefaultProbability(): number {
-  if (resolutions.value.length === 0) return 100;
-  
-  // 기존 항목들의 확률을 균등하게 조정
-  const newCount = resolutions.value.length + 1;
-  const equalProbability = Math.floor(100 / newCount);
-  
-  // 기존 항목들의 확률 조정
-  resolutions.value.forEach(res => {
-    res.probability = equalProbability;
+function removeResolution(resolutionId: string) {
+  emit('resolution-changed', {
+    action: 'remove',
+    scenarioId: props.scenarioId,
+    cutId: props.cutId,
+    resolutionId,
   });
-  
-  // 마지막 항목이 나머지 확률을 가짐
-  return 100 - (equalProbability * resolutions.value.length);
 }
 
-// 확률 검증 및 조정
-function validateProbabilities() {
-  if (resolutions.value.length === 0) return;
-  
-  // 음수 확률 방지
-  resolutions.value.forEach(res => {
-    if (res.probability < 0) res.probability = 0;
-    if (res.probability > 100) res.probability = 100;
-  });
-  
-  // 총합이 100%가 되도록 마지막 항목 조정
-  if (resolutions.value.length > 0) {
-    const lastIndex = resolutions.value.length - 1;
-    const sumExceptLast = resolutions.value
-      .slice(0, lastIndex)
-      .reduce((sum, res) => sum + res.probability, 0);
-    
-    // 마지막 항목이 나머지를 가짐 (최소 0%)
-    resolutions.value[lastIndex].probability = Math.max(0, 100 - sumExceptLast);
-  }
-  
-  updateModelValue();
-}
-
-// 부모 컴포넌트에 변경사항 전달
-function updateModelValue() {
-  emit('update:modelValue', [...resolutions.value]);
-}
-
-// props 변경 시 로컬 상태 업데이트
-watch(() => props.modelValue, (newValue) => {
-  if (Array.isArray(newValue) && newValue.length > 0) {
-    resolutions.value = [...newValue];
-  } else {
-    // modelValue가 유효하지 않은 경우 기본값 설정
-    resolutions.value = [{ width: 1216, height: 832, probability: 100 }];
-    // 부모 컷포넌트에 기본값 전달
-    updateModelValue();
-  }
-}, { deep: true });
 </script>
 
 <style scoped>
@@ -262,6 +266,7 @@ watch(() => props.modelValue, (newValue) => {
 }
 
 .resolution-item {
+  position: relative; /* 자식 요소의 absolute positioning을 위해 필요 */
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -275,27 +280,103 @@ watch(() => props.modelValue, (newValue) => {
 .resolution-info {
   display: flex;
   align-items: center;
-  gap: 10px;
+  height: 36px; /* 고정 높이 설정하여 수직 정렬 개선 */
+}
+
+.resolution-info > * {
+  margin-right: 15px; /* 각 요소마다 오른쪽 여백 적용 */
+}
+
+.resolution-info > *:last-child {
+  margin-right: 0; /* 마지막 요소는 여백 제거 */
+}
+
+.resolution-dimensions {
+  font-size: 1.1rem;
+  font-weight: 500;
+  min-width: 120px;
+  display: flex;
+  align-items: center;
+  height: 100%;
+}
+
+.enabled-switch {
+  margin-right: 10px;
+  display: flex;
+  align-items: center;
+  height: 100%;
+}
+
+.enabled-switch .v-switch__track {
+  height: 10px !important;   /* 트랙 높이 (기본 compact 약 12px) */
+  width: 22px !important;    /* 트랙 너비 (기본 compact 약 28px) */
+  border-radius: 5px !important; /* 트랙 모서리 둥글게 */
+}
+
+.enabled-switch .v-switch__thumb {
+  height: 14px !important; /* 섬 높이 (트랙보다 약간 크게, 기본 compact 약 16px) */
+  width: 14px !important;  /* 섬 너비 */
+}
+
+.enabled-switch.v-input {
+  min-height: auto !important; /* Vuetify의 기본 min-height를 무시하고 줄어들 수 있도록 함 */
+  height: 24px !important;    /* 스위치 전체의 최종 높이를 작게 설정 (예: 24px) */
+}
+
+.enabled-switch .v-selection-control {
+  height: 100% !important; /* 부모(.enabled-switch.v-input)의 높이에 맞춤 */
+  width: auto !important;  /* 너비는 내용에 따라 자동 조절되도록 하거나 고정값 설정 가능 */
 }
 
 .probability-input {
   width: 60px;
-  padding: 4px;
+  padding: 6px 8px;
   border: 1px solid #ddd;
   border-radius: 4px;
+  font-size: 1rem;
+  height: 32px; /* 고정 높이 설정 */
 }
 
 .probability-label {
   color: #666;
+  font-size: 1rem;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  height: 100%;
 }
 
-.remove-btn {
-  background: none;
-  border: none;
-  color: #ff4d4f;
+.remove-btn-round {
+  position: absolute;
+  top: 0px;
+  right: 0px;
+  width: 20px;
+  height: 20px;
+  border-radius: 0;
+  background-color: #f0f0f0;
+  border: 1px solid #ccc;
+  color: #333;
   cursor: pointer;
-  font-size: 1rem;
-  padding: 4px 8px;
+  font-size: 0.9rem;
+  font-weight: bold;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  transition: background-color 0.2s, color 0.2s, border-color 0.2s, transform 0.1s;
+}
+
+.remove-btn-round:hover {
+  background-color: #e53935;
+  color: #fff;
+  border-color: #c62828;
+  transform: scale(1.05);
+}
+
+.remove-btn-round:active {
+  background-color: #c62828;
+  color: #fff;
+  transform: scale(0.98);
 }
 
 .add-resolution {
@@ -314,9 +395,10 @@ watch(() => props.modelValue, (newValue) => {
   color: white;
   border: none;
   border-radius: 4px;
-  padding: 6px 12px;
+  padding: 8px 14px;
   cursor: pointer;
-  font-size: 0.9rem;
+  font-size: 1.1rem;
+  font-weight: 500;
 }
 
 .preset-btn:hover {

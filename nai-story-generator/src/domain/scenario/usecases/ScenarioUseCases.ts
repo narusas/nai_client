@@ -1,6 +1,7 @@
 import { Scenario, Cut, ImageData, CharacterPrompt, PromptItem, ResolutionSetting } from '../entities';
 import { ScenarioRepository, ImageGenerationService, ImageRepository } from '../ports';
 import { v4 as uuidv4 } from 'uuid';
+import { ResolutionService } from '../services/ResolutionService';
 
 /**
  * 시나리오 관련 유스케이스 클래스
@@ -32,56 +33,321 @@ export class ScenarioUseCases {
     return await this.scenarioRepository.getAllScenarios();
   }
 
+  async getAllScenarioSummaries(): Promise<ScenarioSummary[]> {
+    const scenarios = await this.getAllScenarios();
+    return scenarios.map(scenario => ({
+      id: scenario.id,
+      name: scenario.name,
+      updatedAt: typeof scenario.updatedAt === 'string' ? scenario.updatedAt : (scenario.updatedAt as Date)?.toISOString() || new Date().toISOString(),
+      createdAt: typeof scenario.createdAt === 'string' ? scenario.createdAt : (scenario.createdAt as Date)?.toISOString() || new Date().toISOString(),
+      uniqueId: scenario.uniqueId,
+    }));
+  }
+
   async deleteScenario(id: string): Promise<void> {
     await this.scenarioRepository.deleteScenario(id);
+  }
+
+  // 새로운 메소드: 컷의 특정 해상도 확률 업데이트
+  async updateCutResolutionProbability(
+    scenarioId: string,
+    cutId: string,
+    resolutionId: string,
+    newProbability: number
+  ): Promise<Scenario | null> {
+    console.log(`[ScenarioUseCases.updateCutResolutionProbability] Called with: scenarioId=${scenarioId}, cutId=${cutId}, resolutionId=${resolutionId}, newProbability=${newProbability}`);
+    const scenario = await this.getScenarioById(scenarioId);
+    if (!scenario) {
+      console.warn(`[ScenarioUseCases.updateCutResolutionProbability] Scenario with id ${scenarioId} not found. Returning null.`);
+      return null;
+    }
+    console.log('[ScenarioUseCases.updateCutResolutionProbability] Scenario loaded:', JSON.parse(JSON.stringify(scenario)));
+
+    const cut = scenario.cuts.find(c => c.id === cutId);
+    if (!cut) {
+      console.warn(`[ScenarioUseCases.updateCutResolutionProbability] Cut with id ${cutId} not found in scenario ${scenarioId}. Returning null.`);
+      return null;
+    }
+    console.log('[ScenarioUseCases.updateCutResolutionProbability] Cut found:', JSON.parse(JSON.stringify(cut)));
+    console.log('[ScenarioUseCases.updateCutResolutionProbability] cut.selectedResolutions value:', JSON.parse(JSON.stringify(cut.selectedResolutions)));
+
+    // Ensure selectedResolutions exists, or use an empty array if not
+    const resolutionsToUpdate = cut.selectedResolutions || [];
+
+    if (!resolutionsToUpdate || resolutionsToUpdate.length === 0) {
+      console.warn(`[ScenarioUseCases.updateCutResolutionProbability] Cut with id ${cutId} has no selectedResolutions or selectedResolutions array is empty. Cannot update probability. Returning null.`);
+      // Optionally, here you could initialize cut.selectedResolutions with DEFAULT_RESOLUTIONS if that's the desired behavior
+      // For now, just returning null to prevent errors and indicate failure.
+      return null;
+    }
+
+    console.log('[ScenarioUseCases.updateCutResolutionProbability] Resolutions to update (before service call):', JSON.parse(JSON.stringify(resolutionsToUpdate)));
+    console.log(`[ScenarioUseCases.updateCutResolutionProbability] Calling ResolutionService.updateResolutionProbability with resolutionIdToChange=${resolutionId}, newProbability=${newProbability}`);
+
+    const updatedResolutions = ResolutionService.updateResolutionProbability(
+      resolutionsToUpdate, 
+      resolutionId, 
+      newProbability
+    );
+    console.log('[ScenarioUseCases.updateCutResolutionProbability] Resolutions updated by service:', JSON.parse(JSON.stringify(updatedResolutions)));
+
+    cut.selectedResolutions = updatedResolutions;
+
+    // Update the cut in the scenario
+    scenario.cuts = scenario.cuts.map(c => (c.id === cutId ? cut : c));
+    
+    console.log('[ScenarioUseCases.updateCutResolutionProbability] Scenario before save:', JSON.parse(JSON.stringify(scenario)));
+    await this.saveScenario(scenario);
+    console.log('[ScenarioUseCases.updateCutResolutionProbability] Scenario saved. Returning updated scenario.');
+
+    // Log the state of selectedResolutions for the modified cut before returning
+    const finalCut = scenario.cuts.find(c => c.id === cutId);
+    console.log('[ScenarioUseCases.updateCutResolutionProbability] Final selectedResolutions for cut', cutId, ':', JSON.parse(JSON.stringify(finalCut?.selectedResolutions)));
+
+    return scenario;
+  }
+
+  // 새로운 메소드: 컷의 특정 해상도 활성화/비활성화 토글
+  async toggleCutResolutionEnabled(
+    scenarioId: string,
+    cutId: string,
+    resolutionId: string,
+    isEnabled: boolean
+  ): Promise<Scenario | null> {
+    console.log(`[ScenarioUseCases.toggleCutResolutionEnabled] Called with: scenarioId=${scenarioId}, cutId=${cutId}, resolutionId=${resolutionId}, isEnabled=${isEnabled}`);
+    const scenario = await this.getScenarioById(scenarioId);
+    if (!scenario) {
+      console.warn(`[ScenarioUseCases.toggleCutResolutionEnabled] Scenario with id ${scenarioId} not found. Returning null.`);
+      return null;
+    }
+
+    const cut = scenario.cuts.find(c => c.id === cutId);
+    if (!cut) {
+      console.warn(`[ScenarioUseCases.toggleCutResolutionEnabled] Cut with id ${cutId} not found in scenario ${scenarioId}. Returning null.`);
+      return null;
+    }
+
+    const resolutionsToUpdate = cut.selectedResolutions || [];
+    if (resolutionsToUpdate.length === 0) {
+      console.warn(`[ScenarioUseCases.toggleCutResolutionEnabled] Cut with id ${cutId} has no selectedResolutions. Cannot toggle enabled state. Returning null.`);
+      return null;
+    }
+
+    const updatedResolutions = ResolutionService.toggleResolutionEnabled(
+      resolutionsToUpdate,
+      resolutionId,
+      isEnabled
+    );
+
+    cut.selectedResolutions = updatedResolutions;
+    scenario.cuts = scenario.cuts.map(c => (c.id === cutId ? cut : c));
+    await this.saveScenario(scenario);
+
+    // Log the state of selectedResolutions for the modified cut before returning
+    const finalCut = scenario.cuts.find(c => c.id === cutId);
+    console.log('[ScenarioUseCases.toggleCutResolutionEnabled] Final selectedResolutions for cut', cutId, ':', JSON.parse(JSON.stringify(finalCut?.selectedResolutions)));
+
+    return scenario;
+  }
+
+  // 새로운 메소드: 컷에 새 해상도 추가
+  async addResolutionToCut(
+    scenarioId: string,
+    cutId: string,
+    newResolutionData: { width: number; height: number; probability?: number; enabled?: boolean; }
+  ): Promise<Scenario | null> {
+    console.log(`[ScenarioUseCases.addResolutionToCut] Called with: scenarioId=${scenarioId}, cutId=${cutId}, newResolutionData:`, newResolutionData);
+    if (!newResolutionData || typeof newResolutionData.width === 'undefined' || typeof newResolutionData.height === 'undefined') {
+      console.error('[ScenarioUseCases.addResolutionToCut] newResolutionData is invalid or missing width/height.', newResolutionData);
+      const existingScenario = await this.scenarioRepository.getScenarioById(scenarioId);
+      return existingScenario; 
+    }
+
+    let scenario = await this.scenarioRepository.getScenarioById(scenarioId);
+
+    if (!scenario) {
+      console.log(`[ScenarioUseCases.addResolutionToCut] Scenario ${scenarioId} not found. Creating a new one.`);
+      scenario = {
+        id: scenarioId, 
+        name: 'New Scenario', 
+        description: '',
+        cuts: [],
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        userId: '', 
+        isTemplate: false,
+        folderId: null,
+        tags: [],
+        userSortOrder: null,
+      };
+    }
+
+    let cut = scenario.cuts.find(c => c.id === cutId);
+    if (!cut) {
+      console.log(`[ScenarioUseCases.addResolutionToCut] Cut ${cutId} not found in scenario ${scenarioId}. Creating a new cut.`);
+      const newCutName = `Cut ${scenario.cuts.length + 1}`;
+      cut = {
+        id: cutId, 
+        name: newCutName,
+        description: '',
+        prompt: '',
+        negativePrompt: '',
+        seed: -1,
+        sampler: '', 
+        steps: 20, 
+        cfgScale: 7, 
+        selectedResolutions: ResolutionService.DEFAULT_RESOLUTIONS.map(r => ({ 
+          ...r, 
+          id: uuidv4() // Assign a new unique ID for each resolution instance in this cut
+        })),
+        generationParams: {},
+        timings: { baseCost: 0, resolutionCostFactor: 0 },
+      };
+      scenario.cuts.push(cut);
+    }
+
+    if (!cut.selectedResolutions || !Array.isArray(cut.selectedResolutions)) {
+      console.warn('[ScenarioUseCases.addResolutionToCut] cut.selectedResolutions was not an array, initializing.');
+      cut.selectedResolutions = [];
+    }
+
+    const resolutionToAdd: ResolutionSetting = {
+      id: uuidv4(), 
+      width: newResolutionData.width,
+      height: newResolutionData.height,
+      probability: newResolutionData.probability !== undefined ? newResolutionData.probability : 0, 
+      enabled: newResolutionData.enabled !== undefined ? newResolutionData.enabled : true,
+    };
+
+    const updatedCut = ResolutionService.addResolution(cut, resolutionToAdd);
+
+    scenario.cuts = scenario.cuts.map(c => (c.id === cutId ? updatedCut : c));
+    scenario.updatedAt = new Date().toISOString();
+
+    const finalCutState = scenario.cuts.find(c => c.id === cutId);
+    if (finalCutState) {
+      console.log('[ScenarioUseCases.addResolutionToCut] Final selectedResolutions for cut', cutId, ':', JSON.parse(JSON.stringify(finalCutState.selectedResolutions)));
+    } else {
+      console.error('[ScenarioUseCases.addResolutionToCut] Could not find the cut after update to log its state.');
+    }
+  
+    await this.saveScenario(scenario);
+    console.log('[ScenarioUseCases.addResolutionToCut] Scenario processed and saved. Returning scenario.');
+    return scenario;
+  }
+
+  // 새로운 메소드: 컷에서 특정 해상도 제거
+  async removeResolutionFromCut(
+    scenarioId: string,
+    cutId: string,
+    resolutionId: string
+  ): Promise<Scenario | null> {
+    console.log(`[ScenarioUseCases.removeResolutionFromCut] Called with: scenarioId=${scenarioId}, cutId=${cutId}, resolutionId=${resolutionId}`);
+    const scenario = await this.getScenarioById(scenarioId);
+    if (!scenario) {
+      console.warn(`[ScenarioUseCases.removeResolutionFromCut] Scenario with id ${scenarioId} not found. Returning null.`);
+      return null;
+    }
+
+    const cut = scenario.cuts.find(c => c.id === cutId);
+    if (!cut) {
+      console.warn(`[ScenarioUseCases.removeResolutionFromCut] Cut with id ${cutId} not found in scenario ${scenarioId}. Returning null.`);
+      return null;
+    }
+
+    const resolutionsToUpdate = cut.selectedResolutions || [];
+    if (resolutionsToUpdate.length === 0) {
+      console.warn(`[ScenarioUseCases.removeResolutionFromCut] Cut with id ${cutId} has no selectedResolutions. Cannot remove resolution. Returning null.`);
+      return null;
+    }
+
+    const updatedResolutions = ResolutionService.removeResolution(
+      resolutionsToUpdate,
+      resolutionId
+    );
+
+    cut.selectedResolutions = updatedResolutions;
+    scenario.cuts = scenario.cuts.map(c => (c.id === cutId ? cut : c));
+    await this.saveScenario(scenario);
+
+    // Log the state of selectedResolutions for the modified cut before returning
+    const finalCut = scenario.cuts.find(c => c.id === cutId);
+    console.log('[ScenarioUseCases.removeResolutionFromCut] Final selectedResolutions for cut', cutId, ':', JSON.parse(JSON.stringify(finalCut?.selectedResolutions)));
+
+    return scenario;
   }
 
   /**
    * 컷 데이터를 기반으로 이미지 생성
    * 컷에서 프롬프트, 해상도, 시드 등의 정보를 추출하여 이미지 생성
    * @param cut 이미지를 생성할 컷 객체
+   * @param scenarioId 이미지가 속한 시나리오 ID
    * @returns 생성된 이미지 데이터 목록
    */
-  async generateImagesForCut(cut: Cut): Promise<ImageData[]> {
-    if (!cut) throw new Error('Cut data is required to generate images.');
+  async generateImagesForCut(cut: Cut, scenarioId: string): Promise<ImageData[]> {
+    console.log(`[ScenarioUseCases] generateImagesForCut - Received scenarioId: ${scenarioId}, cutId: ${cut ? cut.id : 'cut is null'}`);
+    console.log(`[ScenarioUseCases] generateImagesForCut - Full cut object:`, JSON.stringify(cut, null, 2));
+    if (cut) {
+      console.log(`[ScenarioUseCases] generateImagesForCut - cut.mainPromptItems object:`, JSON.stringify(cut.mainPromptItems, null, 2));
+    }
 
-    console.log('[ScenarioUseCases] generateImagesForCut - Received Cut:', 
-      JSON.parse(JSON.stringify(cut)));
+    if (!cut || !cut.mainPromptItems) {
+      throw new Error('Cut 또는 mainPromptItems가 유효하지 않습니다.');
+    }
 
-    // 메인 프롬프트 및 네거티브 프롬프트 추출 (첫 번째 활성화된 PromptItem 사용 가정)
+    const scenario = await this.getScenarioById(scenarioId); // 수정된 코드
+    if (!scenario) {
+      throw new Error(`Scenario with id ${scenarioId} not found`);
+    }
+
+    const cutIndex = scenario.cuts.findIndex(c => c.id === cut.id);
+    if (cutIndex === -1) {
+      throw new Error(`Cut with id ${cut.id} not found in scenario ${scenarioId}`);
+    }
+
+    // 컷에서 메인 프롬프트, 네거티브 프롬프트, 캐릭터 프롬프트 정보 추출
     const mainPromptItem = cut.mainPromptItems?.find(item => item.enabled !== false) || cut.mainPromptItems?.[0];
-    const mainPrompt = mainPromptItem?.prompt || '';
+    const mainPromptText = mainPromptItem?.prompt || '';
     const negativePrompt = mainPromptItem?.negativePrompt || '';
-    console.log(`[ScenarioUseCases] Main Prompt from Cut: ${mainPrompt}`);
-    console.log(`[ScenarioUseCases] Negative Prompt from Cut: ${negativePrompt}`);
+    
+    console.log(`[ScenarioUseCases] Extracted Main Prompt from mainPromptItems: ${mainPromptText}`);
+    console.log(`[ScenarioUseCases] Extracted Negative Prompt from mainPromptItems: ${negativePrompt}`);
 
-    // 캐릭터 프롬프트 추출 (각 CharacterPrompt의 첫 번째 활성화된 PromptItem 사용 가정)
-    const activeCharacterPrompts = (cut.characterPrompts || [])
+    const characterPromptStrings = (cut.characterPrompts || []) // characterPrompts -> characterPromptStrings 변수명 변경
       .filter(cp => cp.enabled)
       .map(cp => {
-        const charPromptItem = cp.promptItems?.find(item => item.enabled !== false) || cp.promptItems?.[0];
-        return charPromptItem?.prompt || '';
+        // PromptItem 배열에서 실제 프롬프트 문자열 추출
+        // 여기서는 첫번째 enabled된 PromptItem의 prompt를 사용하거나, 없으면 빈 문자열 반환
+        const activePromptItem = cp.promptItems.find(pi => pi.enabled);
+        return activePromptItem ? activePromptItem.prompt : '';
       })
-      .filter(prompt => prompt); // 빈 문자열 제거
-    console.log('[ScenarioUseCases] Active Character Prompts from Cut:', activeCharacterPrompts);
+      .filter(prompt => prompt.length > 0); // 빈 문자열 프롬프트는 제외
+    
+    console.log(`[ScenarioUseCases] Extracted Character Prompts: ${JSON.stringify(characterPromptStrings)}`);
 
-    // 해상도 선택 (첫 번째 활성화된 ResolutionSetting 사용 가정)
-    const resolutionSetting = cut.selectedResolutions?.find(res => res.enabled !== false) || cut.selectedResolutions?.[0];
-    const width = resolutionSetting?.width || 1024; // 기본값 또는 오류 처리 필요
-    const height = resolutionSetting?.height || 1024; // 기본값 또는 오류 처리 필요
-    console.log(`[ScenarioUseCases] Selected Resolution: ${width}x${height}`);
+    const selectedResolutionItem = cut.selectedResolutions?.find(res => res.enabled);
+    const width = selectedResolutionItem?.width || 1024; // 기본값 또는 오류 처리 필요
+    const height = selectedResolutionItem?.height || 1024; // 기본값 또는 오류 처리 필요
 
-    const images = await this.generateImages(
-      mainPrompt,
+    const imageCount = cut.imageCount || 1;
+
+    const generatedImages = await this.generateImages(
+      mainPromptText,
       negativePrompt,
-      activeCharacterPrompts,
-      cut.imageCount,
+      characterPromptStrings, // 수정된 변수명 사용
+      imageCount,
       width,
       height,
-      cut.seed,
-      cut.otherParams
+      cut.seed, // 시드 값 전달
+      {
+        // 여기에 Cut의 다른 imageGenerationSettings를 전달할 수 있습니다.
+        // 예: sampler, steps 등
+        ...(cut.imageGenerationSettings || {})
+      },
+      scenarioId,
+      cutIndex // cut.id 대신 cutIndex 전달
     );
-    return images;
+    return generatedImages;
   }
 
   /**
@@ -95,6 +361,8 @@ export class ScenarioUseCases {
    * @param height 이미지 높이 (픽셀)
    * @param seed 이미지 생성 시드값 (선택적)
    * @param otherParams 기타 추가 파라미터 (선택적)
+   * @param scenarioId 시나리오 ID (선택적, 다운로드 시 사용)
+   * @param cutIndex 컷 인덱스 (선택적, 다운로드 시 사용)
    * @returns 생성된 이미지 데이터 목록
    */
   async generateImages(
@@ -105,7 +373,9 @@ export class ScenarioUseCases {
     width: number,
     height: number,
     seed?: number,
-    otherParams?: Record<string, any>
+    otherParams?: Record<string, any>,
+    scenarioId?: string,
+    cutIndex?: number
   ): Promise<ImageData[]> {
     console.log('[ScenarioUseCases] generateImages - Parameters:');
     console.log(`  Main Prompt: ${mainPrompt}`);
@@ -116,6 +386,8 @@ export class ScenarioUseCases {
     console.log(`  Height: ${height}`);
     console.log(`  Seed: ${seed}`);
     console.log(`  Other Params: ${JSON.stringify(otherParams)}`);
+    console.log(`  Scenario ID: ${scenarioId}`);
+    console.log(`  Cut Index: ${cutIndex}`);
 
     if (!this.imageGenerationService) {
       throw new Error('ImageGenerationService is not configured');
@@ -129,7 +401,9 @@ export class ScenarioUseCases {
       width,
       height,
       seed,
-      otherParams
+      otherParams,
+      scenarioId,
+      cutIndex
     );
   }
 
@@ -156,14 +430,22 @@ export class ScenarioUseCases {
    * @returns 새로운 시나리오 객체
    */
   createNewScenario(): Scenario {
+    const newId = uuidv4();
+    const now = new Date().toISOString();
     return {
-      id: uuidv4(),
+      id: newId,
       name: '새 시나리오',
-      leadingPromptItems: [], // 시나리오 전체에 적용되는 앞쪽 프롬프트 항목
-      trailingPromptItems: [], // 시나리오 전체에 적용되는 뒤쪽 프롬프트 항목
-      cuts: [this.createNewCut()],
-      createdAt: new Date(),
-      updatedAt: new Date()
+      description: '',
+      cuts: [
+        this.createNewCut(true) // 첫 번째 컷은 기본값으로 생성
+      ],
+      createdAt: now,
+      updatedAt: now,
+      userId: '', 
+      isTemplate: false,
+      folderId: null,
+      tags: [],
+      userSortOrder: null,
     };
   }
 
@@ -201,5 +483,32 @@ export class ScenarioUseCases {
       ],
       // seed, otherParams는 선택적 필드로 기본값은 설정하지 않음
     };
+  }
+
+  // 네거티브 프롬프트 히스토리 가져오기
+  getNegativePromptHistory(): string[] {
+    try {
+      const historyJson = localStorage.getItem('negativePromptHistory');
+      if (historyJson) {
+        const history = JSON.parse(historyJson);
+        if (Array.isArray(history) && history.every(item => typeof item === 'string')) {
+          return history;
+        }
+      }
+    } catch (error) {
+      console.error('Error getting negative prompt history:', error);
+    }
+    return []; // 오류 발생 또는 데이터 없을 시 빈 배열 반환
+  }
+
+  // 네거티브 프롬프트 히스토리 저장하기
+  saveNegativePromptHistory(history: string[]): void {
+    try {
+      // 최신 항목이 위로 오도록 하고, 중복 제거, 최대 갯수 제한 (예: 50개)
+      const uniqueHistory = [...new Set(history)].slice(0, 50);
+      localStorage.setItem('negativePromptHistory', JSON.stringify(uniqueHistory));
+    } catch (error) {
+      console.error('Error saving negative prompt history:', error);
+    }
   }
 }

@@ -1,0 +1,27 @@
+진행중인 작업:
+- [ ] 사용자 피드백에 따른 추가 개선 사항 반영 (대기 중)
+- [ ] `ResolutionService` 및 `ScenarioUseCases`의 해상도 관련 신규 메소드에 대한 단위 테스트 및 통합 테스트 작성
+- [ ] `ResolutionService`의 로직 및 사용 방법에 대한 개발 문서 작성 (필요시 `/docs` 폴더 내에)
+- [ ] UI 레이어에서 `ScenarioUseCases`의 `updateCutResolutionProbability` 및 `toggleCutResolutionEnabled` 메소드 연동 검토 및 구현
+- [ ] 이미지 생성 시, `generateImagesForCut`에서 `selectedResolutions`의 확률에 따라 해상도를 선택하는 로직 적용 고려 (현재는 첫 번째 활성화된 것 사용)
+- [ ] 수정된 `ResolutionService`의 확률 조정 로직에 대한 종합적인 테스트 및 검증
+- [ ] UI 레이어에서 해상도 추가/활성화/비활성화/확률 변경 시 자동 조정 기능 동작 최종 확인
+- [ ] `CutCard.vue`를 사용하는 부모 컴포넌트 (예: `ScenarioDetail.vue` 또는 유사 컴포넌트) 수정:
+  - `CutCard`에 `scenarioId` prop 전달.
+  - `CutCard`에서 emit하는 `request-resolution-update` 이벤트를 수신하고, `ScenarioUseCases`를 호출하여 해상도 변경 사항을 시스템에 반영하는 로직 추가.
+- [ ] `ResolutionPanel.vue`, `CutCard.vue` 및 부모 컴포넌트 간의 통합 테스트 수행.
+- [ ] **통합 테스트**: ResolutionPanel 통합 관련 전체 기능 (해상도 추가, 삭제, 확률 변경, 활성화/비활성화 토글, 경계 조건 등)을 철저히 테스트.
+- [ ] **문서화**: 완료된 `ResolutionPanel` 통합 작업에 대해 `docs/resolution_management.md` (가칭) 또는 관련 문서 업데이트.
+- [ ] **코드 리뷰 및 리팩토링 (선택적)**:
+    -   `ResolutionService._rebalanceProbabilities` 함수의 `mainChangedId` 처리 방식 개선 고려.
+    -   `ScenarioEditor.vue`의 상태 업데이트 전략 검토 (Pinia 스토어 직접 업데이트 방식 고려).
+- [X] ResolutionPanel.vue: 비활성화된 해상도의 확률 입력 필드를 UI에서 disabled 처리
+- [X] ResolutionPanel.vue: 해상도 활성화/비활성화 UI (체크박스) 추가 및 로직 연결
+- [ ] ResolutionPanel.vue: 활성화/비활성화 UI 및 관련 확률 재조정 기능 종합 테스트
+- [ ] 해상도 삭제 기능 개선 (삭제 버튼 조건부 표시, 확률 재계산 확인)
+- [ ] 다운로드 실패 시 사용자 알림 및 재시도 옵션 제공 검토
+- [ ] 이미지 자동 다운로드 기능 종합 테스트 (다양한 시나리오, 컷, 이미지 형식 및 scenarioId/cutId 전달 경로 확인)
+
+완료된 작업:
+- 해상도 UI 업데이트 즉시 반영 문제 해결
+- 해상도 삭제 기능 개선 (삭제 버튼 조건부 표시, 확률 재계산 확인)

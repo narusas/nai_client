@@ -8,10 +8,6 @@
         class="character-name-input"
       />
       <div class="character-controls">
-        <label class="enable-checkbox">
-          <input type="checkbox" v-model="charPrompt.enabled" />
-          <span>활성화</span>
-        </label>
         <div class="order-controls">
           <button 
             @click="moveUp" 
@@ -34,52 +30,48 @@
       </div>
     </div>
     
-    <div class="character-prompt-content">
-      <div class="prompt-section">
-        <label>프롬프트</label>
-        <textarea 
-          v-model="charPrompt.prompt" 
-          placeholder="캐릭터 프롬프트를 입력하세요"
-          rows="2"
-        ></textarea>
-      </div>
-      
-      <div class="negative-prompt-section">
-        <label>네거티브 프롬프트</label>
-        <textarea 
-          v-model="charPrompt.negativePrompt" 
-          placeholder="캐릭터 네거티브 프롬프트를 입력하세요"
-          rows="2"
-        ></textarea>
-      </div>
-      
-      <div class="position-section">
-        <label>위치 (x, y)</label>
-        <div class="position-inputs">
-          <input 
-            type="number" 
-            v-model.number="charPrompt.position.x" 
-            min="0" 
-            max="1" 
-            step="0.1"
-            placeholder="X (0-1)"
-          />
-          <input 
-            type="number" 
-            v-model.number="charPrompt.position.y" 
-            min="0" 
-            max="1" 
-            step="0.1"
-            placeholder="Y (0-1)"
-          />
+    <!-- PromptItemList 컴포넌트 사용 -->
+    <PromptItemList
+      :model-value="[charPrompt]"
+      @update:model-value="updateCharPromptItems"
+      @add-prompt-item="addCharPromptItem"
+      @remove-prompt-item="removeCharPromptItem"
+      @toggle-enabled="toggleEnabled"
+      @update-probability="updateProbability"
+      @update-prompt="updatePrompt"
+      add-button-text=""
+    >
+      <template #additional-fields="{ item, index }">
+        <div class="position-section">
+          <label>위치 (x, y)</label>
+          <div class="position-inputs">
+            <input 
+              type="number" 
+              v-model.number="charPrompt.position.x" 
+              min="0" 
+              max="1" 
+              step="0.1"
+              placeholder="X (0-1)"
+              @change="updatePosition('x', $event.target.value)"
+            />
+            <input 
+              type="number" 
+              v-model.number="charPrompt.position.y" 
+              min="0" 
+              max="1" 
+              step="0.1"
+              placeholder="Y (0-1)"
+              @change="updatePosition('y', $event.target.value)"
+            />
+          </div>
         </div>
-      </div>
-    </div>
+      </template>
+    </PromptItemList>
   </div>
 </template>
 
 <script setup lang="ts">
-import { defineProps, defineEmits } from 'vue';
+import PromptItemList from './PromptItemList.vue';
 
 const props = defineProps({
   charPrompt: {
@@ -96,7 +88,7 @@ const props = defineProps({
   }
 });
 
-const emit = defineEmits(['remove', 'move-up', 'move-down']);
+const emit = defineEmits(['update:characterPrompt', 'remove', 'move-up', 'move-down']);
 
 function remove() {
   emit('remove');
@@ -112,6 +104,44 @@ function moveDown() {
   if (props.charIndex < props.totalCharacters - 1) {
     emit('move-down');
   }
+}
+
+// PromptItemList 컴포넌트와 연동하기 위한 메서드들
+function updateCharPromptItems(items: any[]) {
+  if (items && items.length > 0) {
+    emit('update:characterPrompt', items[0]);
+  }
+}
+
+function addCharPromptItem() {
+  // 캐릭터 프롬프트에서는 추가 버튼을 숨겼으므로 실제로 호출되지 않음
+}
+
+function removeCharPromptItem() {
+  // 캐릭터 프롬프트에서는 PromptItemList의 삭제 대신 상단의 삭제 버튼 사용
+  remove();
+}
+
+function toggleEnabled(payload: { index: number, enabled: boolean }) {
+  const updatedCharPrompt = { ...props.charPrompt, enabled: payload.enabled };
+  emit('update:characterPrompt', updatedCharPrompt);
+}
+
+function updateProbability(payload: { index: number, probability: number }) {
+  const updatedCharPrompt = { ...props.charPrompt, probability: payload.probability };
+  emit('update:characterPrompt', updatedCharPrompt);
+}
+
+function updatePrompt(payload: { index: number, field: 'prompt' | 'negativePrompt', value: string }) {
+  const updatedCharPrompt = { ...props.charPrompt, [payload.field]: payload.value };
+  emit('update:characterPrompt', updatedCharPrompt);
+}
+
+function updatePosition(axis: 'x' | 'y', value: string) {
+  const position = { ...props.charPrompt.position };
+  position[axis] = parseFloat(value);
+  const updatedCharPrompt = { ...props.charPrompt, position };
+  emit('update:characterPrompt', updatedCharPrompt);
 }
 </script>
 

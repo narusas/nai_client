@@ -1,90 +1,27 @@
 <template>
-  <div class="scenario-editor">
-    <div class="scenario-header">
-      <div class="scenario-controls">
-        <input
-          type="text"
-          v-model="currentScenario.name"
-          placeholder="시나리오 이름"
-          class="scenario-name-input"
-          @blur="handleSaveScenario" 
-        />
-        <button @click="handleNewScenario" class="new-button">신규</button>
-        <button @click="handleSaveScenario" class="save-button">저장</button>
-        <button @click="openScenarioListModal" class="load-button">불러오기</button>
-        <button @click="handleAddCut" class="add-button">컷&nbsp; 추가</button>
-        <button @click="toggleCutListVisibility" class="toggle-cuts-button">
-          {{ showCutList ? '목록 숨기기' : '목록 보이기' }}
-        </button>
-      </div>
-    </div>
-
-    <ScenarioListModal
-      :show-modal="showScenarioList"
-      :scenario-list="allScenarios"
-      @close="closeScenarioListModal"
-      @select-scenario="handleSelectScenarioFromModal"
-      @delete-scenario="handleDeleteScenarioFromModal"
-      @new-scenario="handleNewScenarioFromModal"
-    />
-
-    <template v-if="showCutList">
-      <TopScrollbar :targetRef="cutsContainerEl">
-        <div class="cuts-container-wrapper">
-          <div class="cuts-container" ref="cutsContainerEl">
-            <CutCard
-              v-for="(cut, index) in currentScenario.cuts"
-              :key="cut.id || index" 
-              :cut-data="cut"
-              :cut-index="index"
-              :is-generating-image="isGeneratingImageForCut(cut.id)"
-              :negative-prompt-history="negativePromptHistoryList"
-              @update:cutData="(updatedCut) => handleUpdateCut(index, updatedCut)"
-              @remove-cut="() => handleRemoveCut(index)"
-              @generate-images="() => handleGenerateImagesForCut(cut)"
-              @open-negative-history="() => openNegativeHistoryModal(cut)"
-              @add-character-prompt="() => handleAddCharacterPromptToCut(cut)"
-              @update-character-prompt="({ charIndex, updatedPrompt }) => handleUpdateCharacterPromptInCut(cut, charIndex, updatedPrompt)"
-              @remove-character-prompt="(charIndex) => handleRemoveCharacterPromptFromCut(cut, charIndex)"
-              @move-character-prompt="({ charIndex, direction }) => handleMoveCharacterPromptInCut(cut, charIndex, direction)"
-              @toggle-character-prompt="(charIndex) => handleToggleCharacterPromptInCut(cut, charIndex)"
-              @update-representative-image="(imageUrl) => handleUpdateRepresentativeImageForCut(cut, imageUrl)"
-              @select-image-for-view="(imageData) => handleSelectImageForView(imageData)"
-            />
-          </div>
-        </div>
-      </TopScrollbar>
-    </template>
-
-    <NegativeHistoryModal
-      :show-modal="showNegativeHistory"
-      :negative-prompt-history="negativePromptHistoryList"
-      @close="closeNegativeHistoryModal"
-      @select-history="handleSelectNegativeHistory"
-    />
-
-    <div v-if="isGlobalLoading" class="global-loading-overlay">
-      <div class="loading-spinner"></div>
-      <p>처리 중...</p>
-    </div>
-  </div>
+  <!-- ... -->
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, computed, watch, nextTick } from 'vue';
-import { v4 as uuidv4 } from 'uuid';
-import TopScrollbar from './TopScrollbar.vue';
-import ScenarioListModal from './ScenarioListModal.vue';
-import NegativeHistoryModal from './NegativeHistoryModal.vue';
-import CutCard from './CutCard.vue';
-
-import { Scenario, Cut, CharacterPrompt as CharacterPromptType, ImageData, ScenarioSummary } from '@/domain/scenario/entities';
-import { ScenarioRepositoryImpl } from '@/adapters/repositories/ScenarioRepositoryImpl';
+import { ref, onMounted, computed, watch, nextTick, provide } from 'vue';
+import { useNaiSettingsStore } from '@/stores/naiSettings';
+import { useScenarioStore } from '@/stores/scenario';
 import { ScenarioUseCases } from '@/domain/scenario/usecases/ScenarioUseCases';
-import { ImageGenerationService } from '@/domain/scenario/ports/ImageGenerationService';
+import { 
+  Scenario, 
+  Cut, 
+  CharacterPrompt as CharacterPromptType, 
+  ImageData, 
+  PromptItem, 
+  ResolutionSetting, 
+  type ScenarioSummary 
+} from '@/domain/scenario/entities';
+import { NaiSettingsSummary } from '@/types';
 import { ImageRepository } from '@/domain/scenario/ports/ImageRepository';
 import { NaiApiAdapter } from '@/adapters/NaiApiAdapter';
-import { useScenarioStore } from '@/stores/scenario';
+import { ScenarioRepositoryImpl } from '@/adapters/repositories/ScenarioRepositoryImpl';
+
+
 
 const mockImageRepository: ImageRepository = {
   async saveImage(imageData: ImageData): Promise<void> {
@@ -100,18 +37,21 @@ const scenarioRepository = new ScenarioRepositoryImpl();
 const scenarioUseCases = new ScenarioUseCases(scenarioRepository, new NaiApiAdapter(), mockImageRepository);
 const scenarioStore = useScenarioStore();
 
+const negativePromptHistoryList = ref<string[]>([]); 
+
 // --- Reactive State ---
 const currentScenario = ref<Scenario>(scenarioUseCases.createNewScenario());
 const allScenarios = ref<ScenarioSummary[]>([]);
 const showScenarioList = ref(false);
 const showNegativeHistory = ref(false);
-const negativePromptHistory = ref<string[]>(['nsfw, blurry', 'low quality, worst quality', 'text, watermark']); // 예시
+const negativePromptHistory = ref<string[]>(['nsfw, blurry', 'low quality, worst quality', 'text, watermark']); 
 const selectedCutForHistory = ref<Cut | null>(null);
 const cutsContainerEl = ref<HTMLElement | null>(null);
 const isGlobalLoading = ref(false);
-const cutImageGenerationStatus = ref<Record<string, boolean>>({}); // { [cutId]: isLoading }
-const negativePromptHistoryList = ref<string[]>([]); // 추가된 라인
-const showCutList = ref(true); // 추가: 컷 목록 표시 상태
+const cutImageGenerationStatus = ref<Record<string, boolean>>({}); 
+const showCutList = ref(true); 
+const showLeadingPromptPanel = ref(true);
+const showTrailingPromptPanel = ref(true);
 
 // --- Computed Properties ---
 const isGeneratingImageForCut = (cutId: string | undefined): boolean => {
@@ -131,31 +71,162 @@ function toggleCutListVisibility() {
   showCutList.value = !showCutList.value;
 }
 
+function toggleLeadingPromptPanel() {
+  showLeadingPromptPanel.value = !showLeadingPromptPanel.value;
+}
+
+function toggleTrailingPromptPanel() {
+  showTrailingPromptPanel.value = !showTrailingPromptPanel.value;
+}
+
+// 선행 프롬프트 관리
+function addLeadingPromptItem() {
+  if (!currentScenario.value) return;
+  if (!currentScenario.value.leadingPromptItems) {
+    currentScenario.value.leadingPromptItems = [];
+  }
+  
+  const newPromptItem: PromptItem = {
+    id: uuidv4(),
+    prompt: '',
+    negativePrompt: '',
+    probability: 100,
+    enabled: true
+  };
+  
+  currentScenario.value.leadingPromptItems.push(newPromptItem);
+  handleSaveScenario();
+}
+
+function removeLeadingPromptItem(index: number) {
+  if (!currentScenario.value || !currentScenario.value.leadingPromptItems) return;
+  
+  currentScenario.value.leadingPromptItems.splice(index, 1);
+  handleSaveScenario();
+}
+
+function toggleLeadingPromptItemEnabled(index: number, enabled: boolean) {
+  if (!currentScenario.value || !currentScenario.value.leadingPromptItems) return;
+  
+  currentScenario.value.leadingPromptItems[index].enabled = enabled;
+  handleSaveScenario();
+}
+
+function updateLeadingPromptItemProbability(index: number, probability: number) {
+  if (!currentScenario.value || !currentScenario.value.leadingPromptItems) return;
+  
+  // 확률은 0-100 사이의 값으로 제한
+  const validProbability = Math.max(0, Math.min(100, probability));
+  currentScenario.value.leadingPromptItems[index].probability = validProbability;
+  handleSaveScenario();
+}
+
+function updateLeadingPromptItem(index: number, field: 'prompt' | 'negativePrompt', value: string) {
+  if (!currentScenario.value || !currentScenario.value.leadingPromptItems) return;
+  
+  currentScenario.value.leadingPromptItems[index][field] = value;
+  handleSaveScenario();
+}
+
+// 후행 프롬프트 관리
+function addTrailingPromptItem() {
+  if (!currentScenario.value) return;
+  if (!currentScenario.value.trailingPromptItems) {
+    currentScenario.value.trailingPromptItems = [];
+  }
+  
+  const newPromptItem: PromptItem = {
+    id: uuidv4(),
+    prompt: '',
+    negativePrompt: '',
+    probability: 100,
+    enabled: true
+  };
+  
+  currentScenario.value.trailingPromptItems.push(newPromptItem);
+  handleSaveScenario();
+}
+
+function removeTrailingPromptItem(index: number) {
+  if (!currentScenario.value || !currentScenario.value.trailingPromptItems) return;
+  
+  currentScenario.value.trailingPromptItems.splice(index, 1);
+  handleSaveScenario();
+}
+
+function toggleTrailingPromptItemEnabled(index: number, enabled: boolean) {
+  if (!currentScenario.value || !currentScenario.value.trailingPromptItems) return;
+  
+  currentScenario.value.trailingPromptItems[index].enabled = enabled;
+  handleSaveScenario();
+}
+
+function updateTrailingPromptItemProbability(index: number, probability: number) {
+  if (!currentScenario.value || !currentScenario.value.trailingPromptItems) return;
+  
+  // 확률은 0-100 사이의 값으로 제한
+  const validProbability = Math.max(0, Math.min(100, probability));
+  currentScenario.value.trailingPromptItems[index].probability = validProbability;
+  handleSaveScenario();
+}
+
+function updateTrailingPromptItem(index: number, field: 'prompt' | 'negativePrompt', value: string) {
+  if (!currentScenario.value || !currentScenario.value.trailingPromptItems) return;
+  
+  currentScenario.value.trailingPromptItems[index][field] = value;
+  handleSaveScenario();
+}
+
 // Scenario Management
 async function handleNewScenario() {
   currentScenario.value = scenarioUseCases.createNewScenario();
-  // Optional: save immediately or wait for user action
-  // await handleSaveScenario(); 
+  // 기본 선행/후행 프롬프트 초기화
+  if (!currentScenario.value.leadingPromptItems) {
+    currentScenario.value.leadingPromptItems = [];
+  }
+  if (!currentScenario.value.trailingPromptItems) {
+    currentScenario.value.trailingPromptItems = [];
+  }
+  await handleSaveScenario(); // Save immediately
+}
+
+async function handleLoadScenario(scenarioId: string) {
+  currentScenario.value = await scenarioUseCases.getScenarioById(scenarioId);
+  // 선행/후행 프롬프트 배열이 없으면 초기화
+  if (!currentScenario.value.leadingPromptItems) {
+    currentScenario.value.leadingPromptItems = [];
+  }
+  if (!currentScenario.value.trailingPromptItems) {
+    currentScenario.value.trailingPromptItems = [];
+  }
 }
 
 async function handleSaveScenario() {
   if (!currentScenario.value) return;
+  // 선행/후행 프롬프트 배열이 없으면 초기화
+  currentScenario.value.leadingPromptItems = currentScenario.value.leadingPromptItems || [];
+  currentScenario.value.trailingPromptItems = currentScenario.value.trailingPromptItems || [];
+
   isGlobalLoading.value = true;
   try {
-    await scenarioUseCases.saveScenario(currentScenario.value);
-    await loadAllScenarios(); // Refresh list
+    const savedScenario = await scenarioStore.saveScenario(currentScenario.value);
+    if (savedScenario) {
+      currentScenario.value = savedScenario;
+    }
+    await loadAllScenarioSummaries(); 
+    console.log('시나리오 저장 완료 (스토어 사용):', currentScenario.value?.name);
   } catch (error) {
-    console.error('Error saving scenario:', error);
+    console.error('Error saving scenario (스토어 사용):', error);
   } finally {
     isGlobalLoading.value = false;
   }
 }
 
-async function loadAllScenarios() {
+async function loadAllScenarioSummaries() { 
   try {
-    allScenarios.value = await scenarioUseCases.getAllScenarios();
+    allScenarios.value = await scenarioUseCases.getAllScenarioSummaries();
   } catch (error) {
-    console.error('Error loading scenarios:', error);
+    console.error('Error loading scenario summaries:', error);
   }
 }
 
@@ -170,6 +241,8 @@ async function handleSelectScenarioFromModal(scenarioId: string) {
       console.warn(`Scenario with id ${scenarioId} not found.`);
       await handleNewScenario(); // Fallback to new if selected not found
     }
+    // 삭제 후 목록을 다시 로드하기 위해 loadAllScenarioSummaries 호출
+    await loadAllScenarioSummaries();
   } catch (error) {
     console.error('Error selecting scenario:', error);
   } finally {
@@ -182,7 +255,7 @@ async function handleDeleteScenarioFromModal(scenarioId: string) {
   isGlobalLoading.value = true;
   try {
     await scenarioUseCases.deleteScenario(scenarioId);
-    await loadAllScenarios();
+    await loadAllScenarioSummaries();
     if (currentScenario.value && currentScenario.value.id === scenarioId) {
       await handleNewScenario(); // Load new if current was deleted
     }
@@ -202,6 +275,8 @@ async function handleNewScenarioFromModal() {
 function handleAddCut() {
   if (!currentScenario.value) return;
   const newCut = scenarioUseCases.createNewCut();
+  // 새로 추가된 컷에 기본 프롬프트 아이템 배열 초기화
+  newCut.mainPromptItems = ensurePromptItems(newCut.mainPromptItems);
   currentScenario.value.cuts.push(newCut);
   nextTick(() => {
     cutsContainerEl.value?.scrollTo({ left: cutsContainerEl.value.scrollWidth, behavior: 'smooth' });
@@ -232,27 +307,48 @@ async function handleGenerateImagesForCut(targetCut: Cut) {
 
   console.log('[ScenarioEditor] Generating images for cut:', 
     JSON.parse(JSON.stringify(cut))); // 반응형 프록시를 일반 객체로 변환하여 로깅
-  console.log(`[ScenarioEditor] Main Prompt: ${cut.mainPrompt}`);
-  console.log(`[ScenarioEditor] Negative Prompt: ${cut.negativePrompt}`);
-  console.log('[ScenarioEditor] Character Prompts:', 
-    JSON.parse(JSON.stringify(cut.characterPrompts?.map(cp => `${cp.prompt} (enabled: ${cp.enabled})`))));
+  
+  // 메인 프롬프트 및 네거티브 프롬프트 추출 (첫 번째 활성화된 PromptItem 사용)
+  const mainPromptItem = cut.mainPromptItems?.find(item => item.enabled !== false) || cut.mainPromptItems?.[0];
+  const mainPrompt = mainPromptItem?.prompt || '';
+  const negativePrompt = mainPromptItem?.negativePrompt || '';
+  
+  console.log(`[ScenarioEditor] Main Prompt from PromptItems: ${mainPrompt}`);
+  console.log(`[ScenarioEditor] Negative Prompt from PromptItems: ${negativePrompt}`);
+  
+  // 캡릭터 프롬프트 추출 (활성화된 캡릭터만 사용)
+  const activeCharacterPrompts = (cut.characterPrompts || [])
+    .filter(cp => cp.enabled !== false)
+    .map(cp => cp.prompt || '')
+    .filter(prompt => prompt); // 빈 문자열 제거
+  
+  console.log('[ScenarioEditor] Active Character Prompts:', activeCharacterPrompts);
 
   cutImageGenerationStatus.value[cut.id] = true;
   try {
-    // ScenarioUseCases.generateImages expects structured prompts now
-    const newImages = await scenarioUseCases.generateImages(
-      cut.mainPrompt,
-      cut.negativePrompt,
-      cut.characterPrompts,
-      cut.imageCount
-    );
+    // 선택된 해상도 가져오기 (첫 번째 활성화된 ResolutionSetting 사용)
+    const resolutionSetting = cut.selectedResolutions?.find(res => res.enabled !== false) || cut.selectedResolutions?.[0];
+    const width = resolutionSetting?.width || 1216; // 기본값 사용
+    const height = resolutionSetting?.height || 832; // 기본값 사용
+    console.log(`[이미지 생성] 선택된 해상도: ${width}x${height}`);
+    
+    // ScenarioUseCases.generateImagesForCut 호출
+    const newImages = await scenarioUseCases.generateImagesForCut(cut, currentScenario.value.id);
 
     const cutIndex = currentScenario.value.cuts.findIndex(c => c.id === cut.id);
     if (cutIndex !== -1) {
       currentScenario.value.cuts[cutIndex].generatedImages.push(...newImages);
-      if (!currentScenario.value.cuts[cutIndex].representativeImage && newImages.length > 0) {
-        currentScenario.value.cuts[cutIndex].representativeImage = newImages[0].url;
-        // await scenarioUseCases.setRepresentativeImage(cut.id, newImages[0].url); // Persist if needed
+      
+      // 새로 생성된 이미지가 있으면
+      if (newImages.length > 0) {
+        // 대표 이미지가 없으면 첫 번째 이미지를 대표 이미지로 설정
+        if (!currentScenario.value.cuts[cutIndex].representativeImage) {
+          currentScenario.value.cuts[cutIndex].representativeImage = newImages[0].url;
+          // await scenarioUseCases.setRepresentativeImage(cut.id, newImages[0].url); // Persist if needed
+        }
+        
+        // 생성된 첫 번째 이미지를 이미지 뷰어에 표시
+        handleSelectImageForView(newImages[0]);
       }
     }
   } catch (error) {
@@ -330,7 +426,7 @@ const handleSelectImageForView = (imageData: ImageData) => {
 
 // Modal Controls
 function openScenarioListModal() {
-  loadAllScenarios(); 
+  loadAllScenarioSummaries(); 
   showScenarioList.value = true;
 }
 function closeScenarioListModal() {
@@ -358,150 +454,196 @@ function handleSelectNegativeHistory(prompt: string) {
   closeNegativeHistoryModal();
 }
 
-// Lifecycle Hooks
+// Resolution Update Handler
+interface ResolutionChangedPayload {
+  scenarioId: string; // ResolutionPanel에서 scenarioId를 보내주는지 확인 필요, 없다면 currentScenario.id 사용
+  cutId: string;
+  action: 'probability-change' | 'enabled-change' | 'add' | 'remove' | 'name-change'; // name-change는 현재 미사용
+  resolutionId?: string;
+  resolution?: ResolutionSetting; // Panel에서는 Resolution 타입, UseCase는 ResolutionSetting 기대
+  value?: number | boolean | string;
+}
+
+const handleResolutionUpdateRequest = async (payload: any) => {
+  console.log('[ScenarioEditor] handleResolutionUpdateRequest called with payload:', JSON.parse(JSON.stringify(payload)));
+  // Validate payload structure
+  if (!payload || typeof payload.action !== 'string') {
+    console.error('[ScenarioEditor] Invalid payload received in handleResolutionUpdateRequest:', payload);
+    return;
+  }
+
+  const { action, scenarioId, cutId, resolutionId, probability, enabled, resolutionData } = payload;
+
+  let actionType = '';
+  let params: any = {};
+
+  switch (action) {
+    case 'probability-change':
+      actionType = 'updateCutResolutionProbability';
+      params = { scenarioId, cutId, resolutionId, newProbability: probability };
+      break;
+    case 'toggle_enabled':
+      actionType = 'toggleCutResolutionEnabled';
+      params = { scenarioId, cutId, resolutionId, enabled };
+      break;
+    case 'add':
+      actionType = 'addResolutionToCut';
+      params = { scenarioId, cutId, resolutionData };
+      break;
+    case 'remove':
+      actionType = 'removeResolutionFromCut';
+      params = { scenarioId, cutId, resolutionId };
+      break;
+    default:
+      console.error(`[ScenarioEditor] Unknown action in handleResolutionUpdateRequest: ${action}`);
+      return;
+  }
+  console.log(`[ScenarioEditor] Mapped to actionType: ${actionType}, params:`, JSON.parse(JSON.stringify(params)));
+  await handleScenarioAction(actionType, params);
+};
+
+const handleScenarioAction = async (actionType: string, params: any) => {
+  console.log(`[ScenarioEditor] handleScenarioAction called with actionType: ${actionType}, params:`, JSON.parse(JSON.stringify(params)));
+  if (!currentScenario.value) {
+    console.error('[ScenarioEditor] Current scenario is not available.');
+    return;
+  }
+
+  const actionFunction = (scenarioUseCases as any)[actionType];
+
+  if (typeof actionFunction === 'function') {
+    console.log(`[ScenarioEditor] Preparing to call action function with params:`, JSON.parse(JSON.stringify(params)));
+    let resultScenario: Scenario | null = null;
+    if (actionType === 'addResolutionToCut') {
+      const plainResolutionData = { ...params.resolutionData };
+      console.log('[ScenarioEditor] Plain resolutionData for call:', JSON.parse(JSON.stringify(plainResolutionData)));
+      resultScenario = await actionFunction.call(
+        scenarioUseCases,
+        params.scenarioId,
+        params.cutId,
+        plainResolutionData
+      );
+    } else if (actionType === 'removeResolutionFromCut') {
+      resultScenario = await actionFunction.call(
+        scenarioUseCases,
+        params.scenarioId,
+        params.cutId,
+        params.resolutionId
+      );
+    } else if (actionType === 'updateCutResolutionProbability') {
+      resultScenario = await actionFunction.call(
+        scenarioUseCases,
+        params.scenarioId,
+        params.cutId,
+        params.resolutionId,
+        params.newProbability
+      );
+    } else if (actionType === 'toggleCutResolutionEnabled') {
+      resultScenario = await actionFunction.call(
+        scenarioUseCases,
+        params.scenarioId,
+        params.cutId,
+        params.resolutionId,
+        params.enabled
+      );
+    } else {
+      console.warn(`[ScenarioEditor] Action type '${actionType}' has a generic call, ensure params match method signature. Params:`, JSON.parse(JSON.stringify(params)));
+      resultScenario = await actionFunction.call(scenarioUseCases, params);
+    }
+
+    if (resultScenario) {
+      console.log(`[ScenarioEditor] Action '${actionType}' executed successfully, scenario updated.`);
+      const index = allScenarios.value.findIndex(s => s.id === resultScenario.id);
+      if (index !== -1) {
+        allScenarios.value[index] = resultScenario;
+      }
+      currentScenario.value = resultScenario;
+    } else {
+      console.warn(`[ScenarioEditor] Action '${actionType}' did not return a scenario or failed.`);
+    }
+  } else {
+    console.error(`[ScenarioEditor] Action type '${actionType}' is not a recognized function in ScenarioUseCases.`);
+  }
+};
+
+// PromptItem 배열을 확인하고 기본값을 채우는 헬퍼 함수
+function ensurePromptItems(items: PromptItem[] | undefined): PromptItem[] {
+  if (!items || !Array.isArray(items)) {
+    return [];
+  }
+  return items.map(item => ({
+    id: item.id || uuidv4(),
+    prompt: typeof item.prompt === 'string' ? item.prompt : '',
+    negativePrompt: typeof item.negativePrompt === 'string' ? item.negativePrompt : '',
+    probability: typeof item.probability === 'number' ? Math.max(0, Math.min(100, item.probability)) : 100,
+    enabled: typeof item.enabled === 'boolean' ? item.enabled : true,
+  }));
+}
+
 onMounted(async () => {
   isGlobalLoading.value = true;
   try {
-    await loadAllScenarios();
-    const lastOpened = await scenarioUseCases.getLastOpenedScenario(); // Assuming this is implemented
-    if (lastOpened) {
-      currentScenario.value = lastOpened;
-    } else if (allScenarios.value.length > 0) {
-      // If no 'lastOpened' specifically, but scenarios exist, load the first one as default
-      // Or create new: currentScenario.value = scenarioUseCases.createNewScenario();
-      const firstScenario = await scenarioUseCases.getScenarioById(allScenarios.value[0].id); // getAllScenarios returns Summaries
-      if (firstScenario) currentScenario.value = firstScenario;
-    }
-    // else, it's already a new scenario by default initialisation
+    await scenarioStore.loadScenariosFromDb(); // loadFromLocalStorage() 대신 loadScenariosFromDb() 호출
 
-    // TODO: Load global negative prompt history if needed
+    let scenarioToLoadId = scenarioStore.currentScenarioId;
+
+    if (scenarioToLoadId) {
+      const loadedScenario = await scenarioUseCases.getScenarioById(scenarioToLoadId);
+      if (loadedScenario) {
+        currentScenario.value = loadedScenario;
+      } else {
+        console.warn(`저장된 현재 시나리오 ID(${scenarioToLoadId})를 찾을 수 없습니다. 새 시나리오를 생성합니다.`);
+        currentScenario.value = scenarioUseCases.createNewScenario();
+        await handleSaveScenario();
+      }
+    } else {
+      if (scenarioStore.scenarios && scenarioStore.scenarios.length > 0) {
+        currentScenario.value = scenarioStore.scenarios[0];
+        scenarioStore.setCurrentScenarioId(scenarioStore.scenarios[0].id);
+      } else {
+        await handleSaveScenario();
+      }
+    }
+
+    await loadAllScenarioSummaries();
+    negativePromptHistoryList.value = scenarioUseCases.getNegativePromptHistory();
+
+    if (currentScenario.value) {
+        currentScenario.value.leadingPromptItems = ensurePromptItems(currentScenario.value.leadingPromptItems);
+        currentScenario.value.trailingPromptItems = ensurePromptItems(currentScenario.value.trailingPromptItems);
+        currentScenario.value.cuts.forEach(cut => {
+            cut.mainPromptItems = ensurePromptItems(cut.mainPromptItems);
+        });
+    }
+
   } catch (error) {
-    console.error("Error onMounted:", error);
+    console.error("ScenarioEditor 마운트 중 오류:", error);
+    currentScenario.value = scenarioUseCases.createNewScenario();
+    try {
+      await handleSaveScenario();
+    } catch (saveError) {
+      console.error("폴백 시나리오 저장 중 오류:", saveError);
+    }
   } finally {
     isGlobalLoading.value = false;
   }
-});
 
-// Auto-save on scenario name change (example of deep watch or specific field watch)
-watch(() => currentScenario.value.name, (newName, oldName) => {
-  if (newName !== oldName && currentScenario.value.id) { // Only save if name actually changed for an existing scenario
-    // Debounce this or make it explicit save
-    // handleSaveScenario();
-  }
+  watch(() => currentScenario.value?.name, (newName, oldName) => {
+    if (currentScenario.value && newName !== oldName && newName?.trim() !== '' && typeof oldName === 'string') {
+      // 이름 변경 시 자동 저장 로직 (예: 디바운스된 handleSaveScenario 호출)
+    }
+  }, { deep: false });
+
+  watch(() => currentScenario.value, (newScenario, oldScenario) => {
+    if (newScenario && oldScenario && newScenario.id !== oldScenario.id) {
+      console.log(`Scenario changed from ${oldScenario?.id} to ${newScenario?.id}`);
+      scenarioStore.clearSelectedImage();
+    }
+  }, { deep: true });
 });
 
 </script>
 
 <style scoped>
-.scenario-editor {
-  display: flex;
-  flex-direction: column;
-  height: 100%; /* 부모로부터 높이를 받아오거나, 뷰포트 높이만큼 설정 */
-  overflow: hidden; /* 내부 스크롤은 각 영역에서 처리 */
-}
-
-.scenario-header {
-  margin-bottom: 1rem;
-  padding: 0.5rem;
-  background-color: white;
-  border-radius: 8px;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-}
-
-.scenario-controls {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-}
-
-.scenario-name-input {
-  flex-grow: 1; /* 원래대로 복원 */
-  max-width: 200px; /* 수정: 최대 너비 200px로 변경 */
-  padding: 0.5rem;
-  border: 1px solid #ccc;
-  border-radius: 4px;
-  font-size: 1rem;
-}
-
-.cuts-container-wrapper, /* TopScrollbar가 생성하는 래퍼 클래스 (가정) */
-.cuts-container {
-  flex-grow: 1; /* 사용 가능한 세로 공간을 모두 차지 */
-  /* overflow-y: hidden; 이미 .cuts-container에 적용되어 있음 */
-  /* min-height: 0; /* flex 아이템이 콘텐츠보다 작아질 수 있도록 */
-}
-
-.cuts-container {
-  display: flex;
-  flex-direction: row; /* 가로 방향 명시 */
-  flex-wrap: nowrap; /* 줄바꿈 방지 */
-  gap: 1rem;
-  padding: 1rem; /* 스크롤바 공간 및 여백 확보 */
-  overflow-x: auto; /* 가로 스크롤 활성화 (기능은 유지, 바는 숨김) */
-  overflow-y: hidden; /* 세로 스크롤 비활성화 */
-  align-items: stretch; /* 변경: 컷 카드들이 전체 높이를 차지하도록 */
-  -webkit-overflow-scrolling: touch; /* iOS 부드러운 스크롤 */
-  touch-action: pan-x; /* 추가: 가로 방향 터치 스크롤 명시 */
-  
-  /* 네이티브 가로 스크롤바 숨기기 */
-  scrollbar-width: none; /* Firefox */
-}
-
-/* Webkit 계열 브라우저 네이티브 가로 스크롤바 숨기기 */
-.cuts-container::-webkit-scrollbar {
-  display: none;
-}
-
-/* Basic button styling */
-button {
-  padding: 0.5rem 1rem;
-  border: none;
-  border-radius: 4px;
-  cursor: pointer;
-  font-weight: bold;
-  transition: background-color 0.2s ease;
-}
-
-.new-button { background-color: #e0e0e0; color: #333; }
-.new-button:hover { background-color: #d0d0d0; }
-
-.save-button { background-color: #4CAF50; color: white; }
-.save-button:hover { background-color: #45a049; }
-
-.load-button { background-color: #2196F3; color: white; }
-.load-button:hover { background-color: #1e88e5; }
-
-.add-button { background-color: #FF9800; color: white; }
-.add-button:hover { background-color: #fb8c00; }
-
-.toggle-cuts-button { background-color: #607D8B; color: white; } /* Blue Grey */
-.toggle-cuts-button:hover { background-color: #546E7A; }
-
-.global-loading-overlay {
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  background-color: rgba(255, 255, 255, 0.7);
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  align-items: center;
-  z-index: 2000;
-}
-
-.loading-spinner {
-  border: 4px solid #f3f3f3; /* Light grey */
-  border-top: 4px solid #3498db; /* Blue */
-  border-radius: 50%;
-  width: 40px;
-  height: 40px;
-  animation: spin 1s linear infinite;
-  margin-bottom: 1rem;
-}
-
-@keyframes spin {
-  0% { transform: rotate(0deg); }
-  100% { transform: rotate(360deg); }
-}
+/* ... */
 </style>

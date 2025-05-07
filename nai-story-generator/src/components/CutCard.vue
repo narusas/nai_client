@@ -1,7 +1,7 @@
 <template>
   <div v-if="props.cutData" class="cut-card">
     <div class="cut-header">
-      <h3>컷 {{ props.cutIndex + 1 }}</h3>
+      <h3>#{{ props.cutIndex + 1 }}</h3>
       <div class="cut-controls">
         <input 
           type="number" 
@@ -14,127 +14,36 @@
         />
         <button 
           @click="emitGenerateImages" 
-          class="generate-button"
+          class="generate-button icon-button"
           :disabled="props.isGeneratingImage"
           :class="{ 'disabled': props.isGeneratingImage }"
+          title="이미지 생성"
         >
-          {{ props.isGeneratingImage ? '생성 중...' : '이미지 생성' }}
+          <font-awesome-icon :icon="props.isGeneratingImage ? 'fa-solid fa-spinner fa-spin' : 'fa-solid fa-wand-magic-sparkles'" />
         </button>
-        <button @click="emitRemoveCut" class="remove-button">삭제</button>
-        <button @click="togglePromptsVisibility" class="toggle-prompts-button" title="프롬프트/해상도 보이기/숨기기">
-          {{ showPrompts ? '세부 설정 감추기' : '세부 설정 보이기' }}
+        <button @click="emitRemoveCut" class="remove-button icon-button" title="삭제">
+          <font-awesome-icon icon="fa-solid fa-trash" />
+        </button>
+        <button @click="togglePromptsVisibility" class="toggle-prompts-button icon-button" title="프롬프트/해상도 보이기/숨기기">
+          <font-awesome-icon :icon="showPrompts ? 'fa-solid fa-gear' : 'fa-solid fa-gear'" />
         </button>
       </div>
     </div>
     
-    <div class="cut-content">
-      <div class="cut-image-preview" @click="handleRepresentativeImagePreviewClick">
-        <img 
-          v-if="props.cutData.representativeImage" 
-          :src="props.cutData.representativeImage" 
-          alt="대표 이미지"
-          class="representative-image"
-        />
-        <div v-else class="no-image">
-          이미지 없음
-        </div>
+    <!-- 대표 이미지 패널 (최상단으로 이동) -->
+    <div class="cut-image-preview" @click="handleRepresentativeImagePreviewClick">
+      <img 
+        v-if="props.cutData.representativeImage" 
+        :src="props.cutData.representativeImage" 
+        alt="대표 이미지"
+        class="representative-image"
+      />
+      <div v-else class="no-image">
+        이미지 없음
       </div>
-      
-      <div class="cut-details-editor" v-if="showPrompts">
-        <!-- Main Prompt Items Editor -->
-        <div class="prompt-items-section section-block">
-          <div class="section-header">
-            <h4>메인 프롬프트 아이템</h4>
-            <button @click="addMainPromptItem" class="add-item-button">아이템 추가</button>
-          </div>
-          <div v-if="!props.cutData.mainPromptItems || props.cutData.mainPromptItems.length === 0" class="empty-state">
-            메인 프롬프트 아이템이 없습니다.
-          </div>
-          <div v-for="(item, index) in props.cutData.mainPromptItems" :key="item.id" class="prompt-item-editor item-editor">
-            <div class="item-editor-header">
-              <span>아이템 {{ index + 1 }}</span>
-              <button @click="removeMainPromptItem(index)" class="remove-item-button">삭제</button>
-            </div>
-            <label :for="`prompt-${item.id}`">프롬프트:</label>
-            <textarea :id="`prompt-${item.id}`" v-model="item.prompt" @input="updateCutData" placeholder="프롬프트를 입력하세요" rows="3"></textarea>
-            <label :for="`neg-prompt-${item.id}`">네거티브 프롬프트:</label>
-            <textarea :id="`neg-prompt-${item.id}`" v-model="item.negativePrompt" @input="updateCutData" placeholder="네거티브 프롬프트를 입력하세요" rows="2"></textarea>
-            <div class="item-fields-row">
-              <div class="field-group">
-                <label :for="`prob-${item.id}`">확률:</label>
-                <input :id="`prob-${item.id}`" type="number" v-model.number="item.probability" @input="updateCutData" min="0" max="100" step="1" />
-              </div>
-              <div class="field-group checkbox-group">
-                <input :id="`enabled-${item.id}`" type="checkbox" v-model="item.enabled" @change="updateCutData" />
-                <label :for="`enabled-${item.id}`">활성화</label>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Resolution Settings Editor -->
-        <div class="resolution-settings-section section-block">
-          <div class="section-header">
-            <h4>해상도 설정</h4>
-            <button @click="addResolutionSetting" class="add-item-button">해상도 추가</button>
-          </div>
-          <div v-if="!props.cutData.selectedResolutions || props.cutData.selectedResolutions.length === 0" class="empty-state">
-            해상도 설정이 없습니다.
-          </div>
-          <div v-for="(res, index) in props.cutData.selectedResolutions" :key="res.id" class="resolution-item-editor item-editor">
-            <div class="item-editor-header">
-              <span>해상도 {{ index + 1 }}</span>
-              <button @click="removeResolutionSetting(index)" class="remove-item-button">삭제</button>
-            </div>
-            <div class="item-fields-row">
-              <div class="field-group">
-                <label :for="`width-${res.id}`">너비:</label>
-                <input :id="`width-${res.id}`" type="number" v-model.number="res.width" @input="updateCutData" min="64" step="64" />
-              </div>
-              <div class="field-group">
-                <label :for="`height-${res.id}`">높이:</label>
-                <input :id="`height-${res.id}`" type="number" v-model.number="res.height" @input="updateCutData" min="64" step="64" />
-              </div>
-            </div>
-            <div class="item-fields-row">
-              <div class="field-group">
-                <label :for="`res-prob-${res.id}`">확률:</label>
-                <input :id="`res-prob-${res.id}`" type="number" v-model.number="res.probability" @input="updateCutData" min="0" max="100" step="1" />
-              </div>
-              <div class="field-group checkbox-group">
-                <input :id="`res-enabled-${res.id}`" type="checkbox" v-model="res.enabled" @change="updateCutData" />
-                <label :for="`res-enabled-${res.id}`">활성화</label>
-              </div>
-            </div>
-          </div>
-        </div>
-        
-        <!-- Character Prompts Section (Structure preserved, CharacterPromptComponent will need internal updates later) -->
-        <div class="character-prompts-section section-block">
-            <div class="section-header">
-                <h4>캐릭터 프롬프트</h4>
-                <button @click="emitAddCharacterPrompt" class="add-item-button">캐릭터 추가</button>
-            </div>
-            <CharacterPromptComponent
-                v-for="(charPrompt, charIdx) in props.cutData.characterPrompts"
-                :key="charPrompt.id || charIdx" 
-                :charPrompt="charPrompt"
-                :charIndex="charIdx"
-                :totalCharacters="props.cutData.characterPrompts?.length || 0"
-                @update:charPrompt="(updatedCharPrompt) => handleUpdateCharacterPrompt(charIdx, updatedCharPrompt)"
-                @remove="() => handleRemoveCharacterPrompt(charIdx)"
-                @move-up="() => handleMoveCharacterPrompt(charIdx, 'up')"
-                @move-down="() => handleMoveCharacterPrompt(charIdx, 'down')"
-                @toggle-active="(isActive) => handleToggleCharacterPromptActive(charIdx, isActive)" 
-            />
-             <div v-if="!props.cutData.characterPrompts || props.cutData.characterPrompts.length === 0" class="empty-state">
-                캐릭터 프롬프트가 없습니다.
-            </div>
-        </div>
-
-      </div> <!-- End .cut-details-editor -->
-    </div> <!-- End .cut-content -->
+    </div>
     
+    <!-- 과거 생성 이미지 목록 썸네일 (최상단으로 이동) -->
     <div class="cut-thumbnails">
       <h4>생성된 이미지</h4>
       <div class="thumbnails-container">
@@ -142,372 +51,379 @@
           v-for="(imageData, imgIdx) in props.cutData.generatedImages" 
           :key="imageData.id || imgIdx" 
           class="thumbnail"
-          :class="{ selected: imageData.url === props.cutData.representativeImage }"
-          @click="() => handleGeneratedImageClick(imageData)"
-          @dblclick="() => loadPromptFromGeneratedImage(imageData)"
+          :class="{ 'selected': props.cutData.representativeImage === imageData.url }"
+          @click="handleThumbnailClick(imageData)"
+          :title="`이미지 ${imgIdx + 1}${imageData.seed ? ' (Seed: ' + imageData.seed + ')' : ''}`"
         >
-          <img :src="imageData.url" :alt="`이미지 ${imgIdx + 1}`" />
-          <div v-if="imageData.url === props.cutData.representativeImage" class="thumbnail-badge">
-            대표
-          </div>
-          <div class="thumbnail-number">{{ imgIdx + 1 }}</div>
+          <img :src="imageData.url" :alt="`생성된 이미지 ${imgIdx + 1}`" />
+          <span class="thumbnail-number">{{ imgIdx + 1 }}</span>
+          <span v-if="props.cutData.representativeImage === imageData.url" class="thumbnail-badge">대표</span>
         </div>
-         <div v-if="!props.cutData.generatedImages || props.cutData.generatedImages.length === 0" class="empty-state-small">
-            생성된 이미지가 없습니다.
+        <div v-if="!props.cutData.generatedImages || props.cutData.generatedImages.length === 0" class="empty-state-small">
+          생성된 이미지가 없습니다.
         </div>
       </div>
     </div>
+    
+    <div class="cut-content">
+      <div class="cut-details-editor" v-if="showPrompts">
+        <!-- Resolution Settings Editor - Replaced with ResolutionPanel -->
+        <div class="resolution-settings-section section-block">
+           <div class="section-header">
+            <h4>해상도 설정</h4>
+            <button @click="toggleResolutionPanel" class="toggle-section-button icon-button" :title="showResolutionPanel ? '해상도 설정 숨기기' : '해상도 설정 보기'">
+              <font-awesome-icon :icon="showResolutionPanel ? 'fa-solid fa-chevron-up' : 'fa-solid fa-chevron-down'" />
+            </button>
+          </div>
+          <ResolutionPanel
+            v-if="showResolutionPanel"
+            :modelValue="props.cutData.selectedResolutions"
+            :scenarioId="props.scenarioId" 
+            :cutId="props.cutData.id"
+            @resolution-changed="handleResolutionPanelChange"
+          />
+        </div>
+
+        <!-- Main Prompt Items Editor -->
+        <div class="prompt-items-section section-block">
+          <div class="section-header">
+            <h4>메인 프롬프트 아이템</h4>
+          </div>
+          <PromptItemList
+            v-model="props.cutData.mainPromptItems"
+            add-button-text="메인 프롬프트 아이템 추가"
+            @add-prompt-item="addMainPromptItem"
+            @remove-prompt-item="removeMainPromptItem"
+            @toggle-enabled="(payload) => toggleMainPromptItemEnabled(payload.index, payload.enabled)"
+            @update-probability="(payload) => updateMainPromptItemProbability(payload.index, payload.probability)"
+            @update-prompt="(payload) => updateMainPromptItem(payload.index, payload.field, payload.value)"
+          />
+        </div>
+
+
+        
+        <!-- Character Prompts Section -->
+        <div class="character-prompts-section section-block">
+            <div class="section-header">
+                <h4>캐릭터 프롬프트</h4>
+                <button @click="addCharacterPrompt" class="add-item-button">캐릭터 추가</button>
+            </div>
+            <CharacterPromptComponent 
+                v-for="(charPrompt, index) in props.cutData.characterPrompts" 
+                :key="charPrompt.id" 
+                :charPrompt="charPrompt" 
+                :charIndex="index"
+                :totalCharacters="props.cutData.characterPrompts ? props.cutData.characterPrompts.length : 0"
+                @update:characterPrompt="updatedCharPrompt => updateCharacterPrompt(index, updatedCharPrompt)"
+                @remove="() => removeCharacterPrompt(index)"
+                @move-up="() => moveCharacterPromptUp(index)"
+                @move-down="() => moveCharacterPromptDown(index)"
+            />
+             <div v-if="!props.cutData.characterPrompts || props.cutData.characterPrompts.length === 0" class="empty-state">
+                캐릭터 프롬프트가 없습니다.
+            </div>
+        </div>
+      </div> <!-- End .cut-details-editor -->
+    </div> <!-- End .cut-content -->
   </div>
 </template>
 
 <script setup lang="ts">
-import { defineProps, defineEmits, ref, computed, watch } from 'vue';
+import { ref, computed, watch } from 'vue';
 import { v4 as uuidv4 } from 'uuid';
-// import NegativeHistoryModal from './NegativeHistoryModal.vue'; // Temporarily commented out
 import CharacterPromptComponent from './CharacterPrompt.vue'; 
+import ResolutionPanel from './ResolutionPanel.vue'; // ResolutionPanel import
+import PromptItemList from './PromptItemList.vue'; // PromptItemList import
 import type { Cut, CharacterPrompt as CharacterPromptType, ImageData, PromptItem, ResolutionSetting } from '@/domain/scenario/entities';
 
 // Props definition
 interface Props {
+  scenarioId: string; // SCENARIO ID 추가
   cutData: Cut;
   cutIndex: number;
   isGeneratingImage?: boolean;
-  negativePromptHistory?: string[]; // This might be deprecated or adapted later if NegativeHistoryModal is re-introduced
+  negativePromptHistory?: string[];
 }
 const props = defineProps<Props>();
 
 // Emits definition
 const emit = defineEmits([
-  'update:cutData',
-  'removeCut',
-  'generateImages',
-  'addCharacterPrompt',
-  // 'updateRepresentativeImage', // 대표 이미지 변경은 update:cutData를 통해 부모에게 전달됨
-  'selectImageForView'
+  'update:cutData', 
+  'removeCut', 
+  'generateImages', 
+  'selectRepresentativeImageInCut', 
+  'request-resolution-update', // 해상도 변경 요청 이벤트 추가
+  'view-image' // 이미지 뷰어 열기 이벤트 추가
 ]);
 
-const localCutData = ref<Cut | null>(null);
+// Local reactive state
+const showPrompts = ref(true); // 기본값을 true로 변경
+const showResolutionPanel = ref(true); // 해상도 설정 패널 표시 상태
+const imageCountWritable = ref(props.cutData.imageCount);
 
-watch(() => props.cutData, (newCutData) => {
-  if (newCutData) {
-    const dataToCopy: Cut = {
-      ...newCutData,
-      mainPromptItems: newCutData.mainPromptItems || [],
-      selectedResolutions: newCutData.selectedResolutions || [],
-      characterPrompts: newCutData.characterPrompts || [],
-      generatedImages: newCutData.generatedImages || [],
-    };
-    localCutData.value = JSON.parse(JSON.stringify(dataToCopy));
-  } else {
-    localCutData.value = null;
-  }
-}, { immediate: true, deep: true });
+watch(() => props.cutData.imageCount, (newVal) => {
+  imageCountWritable.value = newVal;
+});
 
+// --- General Cut Data Update (excluding resolution changes handled by specific event) ---
 const updateCutData = () => {
-  if (localCutData.value) {
-    if (!localCutData.value.mainPromptItems) localCutData.value.mainPromptItems = [];
-    if (!localCutData.value.selectedResolutions) localCutData.value.selectedResolutions = [];
-    if (!localCutData.value.characterPrompts) localCutData.value.characterPrompts = [];
-    if (!localCutData.value.generatedImages) localCutData.value.generatedImages = [];
-    emit('update:cutData', JSON.parse(JSON.stringify(localCutData.value)));
+  // Ensure imageCountWritable reflects in cutData before emitting
+  if (props.cutData.imageCount !== imageCountWritable.value) {
+    const updatedCutData = { ...props.cutData, imageCount: imageCountWritable.value };
+    emit('update:cutData', updatedCutData);
+  } else {
+    emit('update:cutData', props.cutData);
   }
 };
 
-const showPrompts = ref(true);
+// --- Resolution Panel Event Handler ---
+const handleResolutionPanelChange = (eventPayload: any) => {
+  console.log('CutCard received resolution-changed:', JSON.stringify(eventPayload));
+  emit('request-resolution-update', eventPayload);
+};
+
+// --- UI Toggles ---
 const togglePromptsVisibility = () => {
   showPrompts.value = !showPrompts.value;
 };
 
-const imageCountWritable = computed({
-  get: () => localCutData.value?.imageCount || 1,
-  set: (value) => {
-    if (localCutData.value) {
-      const newCount = Math.max(1, Math.min(10, Number(value) || 1));
-      if (localCutData.value.imageCount !== newCount) {
-        localCutData.value.imageCount = newCount;
-        updateCutData();
-      }
+// 해상도 설정 패널 토글 함수
+const toggleResolutionPanel = () => {
+  showResolutionPanel.value = !showResolutionPanel.value;
+};
+
+// --- Main Prompt Item Management ---
+function addMainPromptItem() {
+  if (!props.cutData.mainPromptItems) {
+    props.cutData.mainPromptItems = [];
+  }
+  
+  props.cutData.mainPromptItems.push({
+    id: uuidv4(),
+    prompt: '',
+    negativePrompt: '',
+    probability: 100,
+    enabled: true
+  });
+  
+  updateCutData();
+}
+
+function toggleMainPromptItemEnabled(index: number, enabled: boolean) {
+  if (props.cutData.mainPromptItems && props.cutData.mainPromptItems[index]) {
+    props.cutData.mainPromptItems[index].enabled = enabled;
+    updateCutData();
+  }
+}
+
+function updateMainPromptItemProbability(index: number, probability: number) {
+  if (props.cutData.mainPromptItems && props.cutData.mainPromptItems[index]) {
+    props.cutData.mainPromptItems[index].probability = probability;
+    updateCutData();
+  }
+}
+
+function updateMainPromptItem(index: number, field: 'prompt' | 'negativePrompt', value: string) {
+  if (props.cutData.mainPromptItems && props.cutData.mainPromptItems[index]) {
+    props.cutData.mainPromptItems[index][field] = value;
+    updateCutData();
+  }
+}
+
+function removeMainPromptItem(index: number) {
+  props.cutData.mainPromptItems.splice(index, 1);
+  updateCutData();
+}
+
+// --- Character Prompt Management ---
+const addCharacterPrompt = () => {
+    if (!props.cutData.characterPrompts) {
+        props.cutData.characterPrompts = [];
     }
-  },
-});
-
-// --- MainPromptItem Functions ---
-const addMainPromptItem = () => {
-  if (localCutData.value) {
-    if (!localCutData.value.mainPromptItems) {
-      localCutData.value.mainPromptItems = [];
-    }
-    localCutData.value.mainPromptItems.push({
-      id: uuidv4(),
-      prompt: '',
-      negativePrompt: '',
-      probability: 100,
-      enabled: true,
-    });
-    updateCutData();
-  }
-};
-
-const removeMainPromptItem = (index: number) => {
-  if (localCutData.value && localCutData.value.mainPromptItems) {
-    localCutData.value.mainPromptItems.splice(index, 1);
-    updateCutData();
-  }
-};
-
-// --- ResolutionSetting Functions ---
-const addResolutionSetting = () => {
-  if (localCutData.value) {
-    if (!localCutData.value.selectedResolutions) {
-      localCutData.value.selectedResolutions = [];
-    }
-    localCutData.value.selectedResolutions.push({
-      id: uuidv4(),
-      width: 1216, 
-      height: 832, 
-      probability: 100,
-      enabled: true,
-    });
-    updateCutData();
-  }
-};
-
-const removeResolutionSetting = (index: number) => {
-  if (localCutData.value && localCutData.value.selectedResolutions) {
-    localCutData.value.selectedResolutions.splice(index, 1);
-    updateCutData();
-  }
-};
-
-// --- Character Prompt Handlers (internal updates to localCutData) ---
-const handleUpdateCharacterPrompt = (charIndex: number, updatedCharPrompt: CharacterPromptType) => {
-  if (localCutData.value && localCutData.value.characterPrompts) {
-    localCutData.value.characterPrompts[charIndex] = updatedCharPrompt;
-    updateCutData();
-  }
-};
-const handleRemoveCharacterPrompt = (charIndex: number) => {
-  if (localCutData.value && localCutData.value.characterPrompts) {
-    localCutData.value.characterPrompts.splice(charIndex, 1);
-    updateCutData();
-  }
-};
-const handleMoveCharacterPrompt = (charIndex: number, direction: 'up' | 'down') => {
-  if (localCutData.value && localCutData.value.characterPrompts) {
-    const list = localCutData.value.characterPrompts;
-    const item = list[charIndex];
-    list.splice(charIndex, 1);
-    if (direction === 'up') {
-      list.splice(Math.max(0, charIndex - 1), 0, item);
-    } else { // 'down'
-      list.splice(Math.min(list.length, charIndex + 1), 0, item); 
-    }
-    updateCutData();
-  }
-};
-const handleToggleCharacterPromptActive = (charIndex: number, isActive: boolean) => {
- if (localCutData.value && localCutData.value.characterPrompts && localCutData.value.characterPrompts[charIndex]) {
-    localCutData.value.characterPrompts[charIndex].enabled = isActive;
-    updateCutData();
-  }
-};
-
-// --- Event Handlers for Emits ---
-const emitRemoveCut = () => emit('removeCut');
-const emitGenerateImages = () => {
-  if (localCutData.value) {
-    emit('generateImages', localCutData.value.id);
-  }
-};
-const emitAddCharacterPrompt = () => emit('addCharacterPrompt'); 
-
-// --- Representative Image & Image Click Handling ---
-const handleRepresentativeImagePreviewClick = () => {
-  if (localCutData.value?.representativeImage) {
-    const imgData = localCutData.value.generatedImages?.find(img => img.url === localCutData.value?.representativeImage);
-    if (imgData) {
-      emit('selectImageForView', imgData);
-    }
-  }
-};
-
-const handleGeneratedImageClick = (imageData: ImageData) => {
-  if (localCutData.value) {
-    localCutData.value.representativeImage = imageData.url;
-    updateCutData();
-  }
-};
-
-// --- Load Prompt from Generated Image ---
-const loadPromptFromGeneratedImage = (imageData: ImageData) => {
-  if (localCutData.value) {
-    if (!localCutData.value.mainPromptItems) {
-      localCutData.value.mainPromptItems = [];
-    }
-    const targetItemData = {
-      prompt: imageData.mainPrompt || '',
-      negativePrompt: imageData.negativePrompt || '',
-    };
-
-    if (localCutData.value.mainPromptItems.length > 0) {
-      localCutData.value.mainPromptItems[0].prompt = targetItemData.prompt;
-      localCutData.value.mainPromptItems[0].negativePrompt = targetItemData.negativePrompt;
-      // Optionally preserve or reset probability/enabled status for the first item
-      // localCutData.value.mainPromptItems[0].enabled = true;
-      // localCutData.value.mainPromptItems[0].probability = 100;
-    } else {
-      localCutData.value.mainPromptItems.push({
+    props.cutData.characterPrompts.push({
         id: uuidv4(),
-        ...targetItemData,
+        name: '',
+        prompt: '',
+        negativePrompt: '',
         probability: 100,
         enabled: true,
-      });
-    }
-
-    if (imageData.width && imageData.height) {
-      if (!localCutData.value.selectedResolutions) {
-        localCutData.value.selectedResolutions = [];
-      }
-      const resData = {
-        width: imageData.width,
-        height: imageData.height,
-      };
-      if (localCutData.value.selectedResolutions.length > 0) {
-        localCutData.value.selectedResolutions[0].width = resData.width;
-        localCutData.value.selectedResolutions[0].height = resData.height;
-        // Optionally preserve or reset probability/enabled status for the first resolution
-        // localCutData.value.selectedResolutions[0].enabled = true;
-        // localCutData.value.selectedResolutions[0].probability = 100;
-      } else {
-        localCutData.value.selectedResolutions.push({
-          id: uuidv4(),
-          ...resData,
-          probability: 100,
-          enabled: true,
-        });
-      }
-    }
+        position: { x: 0.5, y: 0.5 }
+    });
     updateCutData();
+};
+
+const removeCharacterPrompt = (index: number) => {
+    props.cutData.characterPrompts.splice(index, 1);
+    updateCutData();
+};
+
+const updateCharacterPrompt = (index: number, updatedCharPrompt: CharacterPromptType) => {
+    if (props.cutData.characterPrompts && props.cutData.characterPrompts[index]) {
+        props.cutData.characterPrompts[index] = updatedCharPrompt;
+        updateCutData();
+    }
+};
+
+const moveCharacterPromptUp = (index: number) => {
+    if (index > 0) {
+        const temp = props.cutData.characterPrompts[index];
+        props.cutData.characterPrompts[index] = props.cutData.characterPrompts[index - 1];
+        props.cutData.characterPrompts[index - 1] = temp;
+        updateCutData();
+    }
+};
+
+const moveCharacterPromptDown = (index: number) => {
+    if (index < props.cutData.characterPrompts.length - 1) {
+        const temp = props.cutData.characterPrompts[index];
+        props.cutData.characterPrompts[index] = props.cutData.characterPrompts[index + 1];
+        props.cutData.characterPrompts[index + 1] = temp;
+        updateCutData();
+    }
+};
+
+
+// --- Image Generation and Selection ---
+const emitGenerateImages = () => {
+  // Ensure latest imageCount is part of the emitted cutData
+  const currentCutData = { ...props.cutData, imageCount: imageCountWritable.value };
+  emit('generateImages', currentCutData);
+};
+
+const selectRepresentativeImage = (imageUrl: string) => {
+  emit('selectRepresentativeImageInCut', { cutId: props.cutData.id, imageUrl });
+};
+
+// 썸네일 이미지 클릭 처리
+const handleThumbnailClick = (imageData: any) => {
+  // 먼저 대표 이미지로 선택
+  selectRepresentativeImage(imageData.url);
+  
+  // 이미지 뷰어 열기
+  emit('view-image', imageData);
+};
+
+const handleRepresentativeImagePreviewClick = () => {
+  // 대표 이미지 클릭 시 이미지 뷰어 열기
+  if (props.cutData.representativeImage) {
+    // 이미지 데이터 찾기
+    const imageData = props.cutData.generatedImages.find(img => img.url === props.cutData.representativeImage) || {
+      url: props.cutData.representativeImage,
+      id: 'representative-' + props.cutData.id,
+      seed: null
+    };
+    
+    // 시나리오 스토어에 이미지 선택 정보 전달
+    emit('view-image', imageData);
   }
 };
 
-// --- NegativeHistoryModal related logic (Commented out) ---
-// const isNegativeHistoryModalVisible = ref(false);
-// const openNegativeHistoryModal = () => {
-//   // This would need to be adapted to target a specific PromptItem's negativePrompt
-//   // emit('openNegativeHistory'); 
-//   // isNegativeHistoryModalVisible.value = true;
-// };
-// const closeNegativeHistoryModal = () => {
-//   // isNegativeHistoryModalVisible.value = false;
-// };
-// const handleSelectNegativePrompt = (history: string) => {
-//   // This would need to be adapted to update a specific PromptItem's negativePrompt
-//   // For example, find the first enabled item or a designated primary item:
-//   // if (localCutData.value && localCutData.value.mainPromptItems) {
-//   //   const targetPromptItem = localCutData.value.mainPromptItems.find(item => item.enabled) || 
-//   //                          (localCutData.value.mainPromptItems.length > 0 ? localCutData.value.mainPromptItems[0] : null);
-//   //   if (targetPromptItem) {
-//   //     targetPromptItem.negativePrompt = history;
-//   //     updateCutData();
-//   //   }
-//   // }
-//   // closeNegativeHistoryModal();
-// };
+// --- Cut Removal ---
+const emitRemoveCut = () => {
+  emit('removeCut', props.cutData.id);
+};
+
+// Deprecated/unused resolution setting methods (functionality moved to ResolutionPanel and parent)
+// const addResolutionSetting = () => { ... };
+// const removeResolutionSetting = (index: number) => { ... };
 
 </script>
 
 <style scoped>
+/* Styles remain largely the same, with minor adjustments if needed for ResolutionPanel integration */
+/* ... existing styles ... */
+
 .cut-card {
-  background-color: #fff;
   border: 1px solid #e0e0e0;
-  border-radius: 8px;
-  margin-bottom: 1rem;
+  border-radius: 6px;
+  margin-bottom: 0.5rem;
+  background-color: #f9f9f9;
   box-shadow: 0 2px 4px rgba(0,0,0,0.05);
-  display: flex;
-  flex-direction: column;
+  overflow: hidden; /* Ensures child elements don't break rounded corners */
+  width: 500px; /* 너비 축소 */
+  flex-shrink: 0; /* 부모 컨테이너가 작아질 때 압축되지 않도록 설정 */
 }
 
 .cut-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 0.75rem 1rem;
-  border-bottom: 1px solid #e0e0e0;
-}
-
-.cut-header h3 {
-  margin: 0;
-  font-size: 1.2rem;
-  font-weight: 600;
+  padding: 0.3rem 0.5rem;
+  background-color: #f5f5f5;
+  border-bottom: 1px solid #ddd;
 }
 
 .cut-controls {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: 0.25rem;
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 
-.image-count-input {
-  width: 50px;
-  text-align: center;
+.cut-header h3 {
+  margin: 0;
+  font-size: 1.1rem;
+  font-weight: 600;
 }
 
 .cut-content {
+  flex: 1;
   display: flex;
-  padding: 1rem;
-  gap: 1rem;
+  flex-direction: column;
+  overflow: hidden;
+  padding: 0;
 }
 
 .cut-image-preview {
-  width: 128px; /* Fixed width for preview */
-  height: 128px; /* Fixed height for preview */
-  border: 1px solid #ccc;
-  border-radius: 4px;
+  height: 340px;
+  overflow: hidden;
+  position: relative;
+  cursor: pointer;
+  background-color: #f0f0f0;
   display: flex;
   justify-content: center;
   align-items: center;
-  overflow: hidden;
-  cursor: pointer;
-  flex-shrink: 0;
 }
 
 .representative-image {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  border-radius: 4px;
+  display: block;
+  margin: 0 auto; /* Center the image */
 }
 
 .no-image {
-  color: #888;
+  color: #777;
+  font-style: italic;
+  padding: 0.5rem;
+  text-align: center;
   font-size: 0.9rem;
 }
 
 .cut-details-editor {
-  flex-grow: 1;
-  display: flex;
-  flex-direction: column;
-  gap: 1rem;
-  min-width: 0; /* Prevent overflow issues with flex children */
-  max-height: 400px; /* Or a suitable max height */
-  overflow-y: auto; /* Scroll for content overflow */
-  padding-right: 10px; /* Space for scrollbar */
+  flex: 1;
+  padding: 0.3rem 0.5rem;
+  overflow-y: visible;
+  max-height: none;
 }
 
 .section-block {
+  margin-bottom: 0.5rem;
   border: 1px solid #eee;
-  border-radius: 6px;
-  padding: 0.75rem;
-  background-color: #f9f9f9;
+  border-radius: 4px;
+  overflow: hidden;
 }
 
 .section-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 0.75rem;
-  padding-bottom: 0.5rem;
-  border-bottom: 1px solid #e0e0e0;
+  background-color: #f5f5f5;
+  padding: 0.3rem 0.5rem;
+  border-bottom: 1px solid #eee;
 }
 
 .section-header h4 {
@@ -519,8 +435,8 @@ const loadPromptFromGeneratedImage = (imageData: ImageData) => {
 .item-editor {
   border: 1px solid #ddd;
   border-radius: 4px;
-  padding: 0.75rem;
-  margin-bottom: 0.75rem;
+  padding: 0.5rem;
+  margin-bottom: 0.5rem;
   background-color: #fff;
 }
 
@@ -593,9 +509,9 @@ const loadPromptFromGeneratedImage = (imageData: ImageData) => {
 }
 
 .cut-thumbnails {
-  padding: 0.5rem 1rem;
+  padding: 0.3rem 0.5rem;
   border-top: 1px solid #eee;
-  max-height: 160px; 
+  max-height: 150px; 
   overflow-y: auto;
 }
 .thumbnails-container {
@@ -661,6 +577,13 @@ button {
   font-size: 0.85rem;
 }
 
+.cut-header .icon-button {
+  width: 28px;
+  height: 28px;
+  min-width: 28px;
+  padding: 0;
+}
+
 .add-item-button {
   background-color: #28a745; /* Green */
   color: white;
@@ -692,21 +615,40 @@ button {
 }
 
 .remove-button {
-  background-color: #6c757d; /* Gray */
+  background-color: #dc3545; /* 빨간색으로 변경 */
   color: white;
 }
 .remove-button:hover {
-  background-color: #5a6268;
+  background-color: #c82333; /* 더 진한 빨간색 */
 }
 
 .toggle-prompts-button {
   background-color: #17a2b8; /* Teal */
   color: white;
-  min-width: auto; /* Adjust as needed */
-  padding: 0.4rem 0.6rem; /* Adjust padding */
+  min-width: auto;
+  padding: 0.4rem 0.6rem;
 }
 .toggle-prompts-button:hover {
   background-color: #138496;
+}
+
+.icon-button {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 0;
+}
+
+.image-count-input {
+  width: 40px;
+  padding: 0.2rem 0.3rem;
+  border-radius: 4px;
+  border: 1px solid #ccc;
+  text-align: center;
+  font-size: 0.8rem;
 }
 
 /* Scrollbar for details editor */

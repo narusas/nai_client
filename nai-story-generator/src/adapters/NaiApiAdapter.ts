@@ -12,7 +12,9 @@ export class NaiApiAdapter implements ImageGenerationService {
     width: number,
     height: number,
     seed?: number,
-    otherParams?: Record<string, any> 
+    otherParams?: Record<string, any>,
+    scenarioId?: string,
+    cutIndex?: number
   ): Promise<ImageData[]> {
     const { generateImages: naiGenerateImages } = useNaiApiService();
 
@@ -28,7 +30,9 @@ export class NaiApiAdapter implements ImageGenerationService {
       imageCount,
       negativePrompt,
       characterPrompts, 
-      finalParams
+      finalParams,
+      scenarioId,
+      cutIndex
     );
 
     const imageDataArray: ImageData[] = imageUrls.map(url => ({

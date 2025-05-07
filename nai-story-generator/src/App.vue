@@ -1,5 +1,9 @@
 <template>
   <v-app>
+    <!-- 알림 컴포넌트 -->
+    <NotificationBar ref="notificationBar" />
+    
+    <!-- 이미지 생성 중 프로그레스 바 -->
     <v-app-bar app flat height="4" style="background-color: transparent; pointer-events: none;">
       <v-progress-linear 
         v-if="isAnyImageGenerating" 
@@ -8,25 +12,50 @@
         style="width: 100%; pointer-events: auto;"
       ></v-progress-linear>
     </v-app-bar>
-
-    <!-- 알림 컴포넌트 -->
-    <NotificationBar ref="notificationBar" />
     
-    <!-- 프로그레스 바 -->
-    
-    <!-- 헤더 제거 -->
-    
-    <v-main>
+    <v-main style="padding: 0;">
       <main class="main-container">
-        <div class="left-panel" :class="{ 'hidden': showFullscreenViewer }">
-          <!-- NAI 설정 패널 -->
-          <section class="settings-panel">
-            <div v-if="!showSettings" class="settings-toggle">
-              <button @click="toggleSettings" class="toggle-button">
-                <span class="button-icon">⚙️</span> NAI 설정
+        <div class="left-panel" :class="{ 'hidden': showFullscreenViewer, 'fullscreen-editor': isFullscreenEditor }">
+          <!-- 시나리오 에디터 상단 영역 -->
+          <div class="editor-header">
+            <!-- 앱 상단 영역 컨텐츠 -->
+            <div class="app-header-content">
+              <!-- 시나리오 편집 전체 화면 토글 버튼 -->
+              <button @click="toggleFullscreenEditor" class="header-button" :title="isFullscreenEditor ? '전체 화면 종료' : '전체 화면 편집'">
+                <font-awesome-icon :icon="isFullscreenEditor ? 'fa-solid fa-compress' : 'fa-solid fa-expand'" />
+              </button>
+              
+              <!-- NAI 설정 요약 정보 패널 -->
+              <div class="settings-summary" v-if="!showSettings">
+                <div class="summary-item" v-if="settingsSummary.sampler">
+                  <span class="summary-label"></span>
+                  <span class="summary-value">{{ settingsSummary.sampler }}</span>
+                </div>
+                <div class="summary-item" v-if="settingsSummary.steps">
+                  <span class="summary-label">S:</span>
+                  <span class="summary-value">{{ settingsSummary.steps }}</span>
+                </div>
+                <div class="summary-item" v-if="settingsSummary.cfg">
+                  <span class="summary-label">CFG:</span>
+                  <span class="summary-value">{{ settingsSummary.cfg }}</span>
+                </div>
+                <div class="summary-item" v-if="settingsSummary.guidance">
+                  <span class="summary-label">G:</span>
+                  <span class="summary-value">{{ settingsSummary.guidance }}</span>
+                </div>
+              </div>
+              
+              <!-- NAI 설정 토글 버튼 -->
+              <button @click="toggleSettings" class="header-button settings-toggle-button">
+                <font-awesome-icon :icon="showSettings ? 'fa-solid fa-times' : 'fa-solid fa-gear'" />
+                <span>{{ showSettings ? '설정 닫기' : 'NAI 설정' }}</span>
               </button>
             </div>
-          <NaiSettingsPanel v-else @close="toggleSettings" @save="handleSettingsSave" />
+          </div>
+          
+          <!-- NAI 설정 패널 -->
+          <section class="settings-panel">
+          <NaiSettingsPanel v-if="showSettings" @close="toggleSettings" @save="handleSettingsSave" @settings-summary="updateSettingsSummary" />
         </section>
         
         <!-- 시나리오 편집 섹션 -->
@@ -60,6 +89,7 @@ import ImageViewer from './components/ImageViewer.vue';
 import NotificationBar from './components/NotificationBar.vue';
 import LoadingBar from './components/LoadingBar.vue';
 import { useScenarioStore } from './stores/scenario';
+import { useNaiSettingsStore } from './stores/naiSettings';
 
 // 컴포넌트 참조
 const notificationBar = ref<InstanceType<typeof NotificationBar> | null>(null);
@@ -75,11 +105,27 @@ const showSettings = ref(false);
 const isMobile = ref(false);
 const showImageViewer = computed(() => !isMobile.value);
 
+// 이미지 뷰어 이전 상태 저장을 위한 변수
+let previousImageViewerState = true;
+
 // 모바일 전체화면 상태
 const showFullscreenViewer = ref(false);
 
+// 시나리오 편집 전체화면 상태
+const isFullscreenEditor = ref(false);
+
 // 이미지 뷰어 컴포넌트 강제 리렌더링을 위한 키
 const imageViewerKey = ref(0);
+
+// NAI 설정 요약 정보
+const settingsSummary = ref({
+  model: '',
+  modelName: '',
+  sampler: '',
+  steps: '',
+  cfg: '',
+  guidance: ''
+});
 
 // 전체화면 모드 변경 감시
 watch(showFullscreenViewer, (newValue) => {
@@ -135,9 +181,57 @@ function checkIfMobile() {
 }
 
 // 설정 패널 토글 함수
-function toggleSettings() {
+const toggleSettings = () => {
   showSettings.value = !showSettings.value;
-}
+};
+
+// 시나리오 편집 전체화면 토글 함수
+const toggleFullscreenEditor = () => {
+  isFullscreenEditor.value = !isFullscreenEditor.value;
+  
+  // 전체화면 모드일 때 이미지 뷰어 감추기
+  if (isFullscreenEditor.value) {
+    // 이미지 뷰어 상태를 임시 저장
+    previousImageViewerState = showImageViewer.value;
+    // 이미지 뷰어 감추기
+    showImageViewer.value = false;
+  } else {
+    // 전체화면 모드가 아닐 때 이미지 뷰어 상태 복원
+    showImageViewer.value = previousImageViewerState;
+  }
+};
+
+// NAI 설정 요약 정보 업데이트 함수
+const updateSettingsSummary = (summary: any) => {
+  settingsSummary.value = summary;
+};
+
+// NAI 설정 요약 정보 초기화 함수
+const initializeSettingsSummary = () => {
+  const naiSettingsStore = useNaiSettingsStore();
+  const settings = naiSettingsStore.getSettings();
+  
+  if (settings) {
+    // 모델 이름 표시용 함수
+    const getModelDisplayName = (modelId: string) => {
+      const modelMap: Record<string, string> = {
+        'nai-diffusion-4-full': 'NAI Diffusion 4 Full',
+        'nai-diffusion-4-curated-preview': 'NAI Diffusion 4 Curated',
+        'nai-diffusion-3': 'NAI Diffusion 3'
+      };
+      return modelMap[modelId] || modelId;
+    };
+    
+    settingsSummary.value = {
+      model: settings.model,
+      modelName: getModelDisplayName(settings.model),
+      sampler: settings.sampler,
+      steps: settings.steps,
+      cfg: settings.cfg_rescale,
+      guidance: settings.scale
+    };
+  }
+};
 
 // 설정 저장 함수
 function handleSettingsSave() {
@@ -231,6 +325,9 @@ onMounted(() => {
   window.startLoading = startLoading;
   window.completeLoading = completeLoading;
   window.cancelLoading = cancelLoading;
+  
+  // NAI 설정 요약 정보 초기화
+  initializeSettingsSummary();
 });
 
 onUnmounted(() => {
@@ -251,18 +348,28 @@ const isAnyImageGenerating = computed(() => scenarioStore.isAnyImageGenerating);
 
 .main-container {
   display: flex;
-  flex: 1;
+  flex-direction: row;
+  height: 100vh;
+  width: 100vw;
+  max-width: 100vw;
+  margin: 0;
+  padding: 0;
   overflow: hidden;
-  /* 애니메이션 제거 */
 }
 
 .left-panel {
   width: 30%;
+  min-width: 0;
   display: flex;
   flex-direction: column;
   overflow-y: auto;
+  overflow-x: hidden;
   background-color: #f5f5f5;
   border-right: 1px solid #ddd;
+  flex: 1 1 0;
+  max-height: 100vh;
+  padding-right: 0.5rem;
+
 }
 
 .right-panel {
@@ -271,48 +378,115 @@ const isAnyImageGenerating = computed(() => scenarioStore.isAnyImageGenerating);
 }
 
 .settings-panel, .scenario-editor, .image-viewer {
-  padding: 1rem;
+  padding: 0.5rem;
 }
 
-.settings-toggle {
-  padding: 1rem;
-  text-align: center;
+/* 시나리오 에디터 상단 영역 스타일 */
+.editor-header {
+  background-color: #f5f5f5;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  padding: 0.3rem 0;
+  margin-bottom: 0.3rem;
+  border-radius: 4px;
 }
 
-.toggle-button {
+.app-header-content {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 0 0.25rem;
+}
+
+.header-button {
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 0.5rem;
-  padding: 0.75rem 1.5rem;
-  background-color: #2196f3;
-  color: white;
+  padding: 0.5rem 0.75rem;
+  background-color: transparent;
+  color: #333;
   border: none;
   border-radius: 4px;
-  font-weight: bold;
+  font-weight: 500;
   cursor: pointer;
   transition: all 0.2s ease;
-  width: 100%;
 }
 
-.toggle-button:hover {
+.header-button:hover {
+  background-color: rgba(0, 0, 0, 0.05);
+}
+
+.settings-toggle-button {
+  background-color: #2196f3;
+  color: white;
+}
+
+.settings-toggle-button:hover {
   background-color: #1976d2;
-  transform: translateY(-2px);
 }
 
-.toggle-button:active {
-  transform: translateY(0);
+.settings-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  flex: 1;
+  justify-content: center;
 }
 
-.button-icon {
-  font-size: 1.2rem;
+.summary-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  background-color: #f0f0f0;
+  padding: 0.3rem 0.6rem;
+  border-radius: 4px;
+  font-size: 0.8rem;
+}
+
+.summary-label {
+  font-weight: bold;
+  color: #555;
+}
+
+.summary-value {
+  color: #333;
 }
 
 /* 모바일 환경 스타일 */
 @media (max-width: 768px) {
-  .main-container {
-    flex-direction: column;
+  .app-header-content {
+    padding: 0 0.3rem;
   }
+  
+  .header-button {
+    padding: 0.4rem 0.6rem;
+    font-size: 0.9rem;
+  }
+  
+  .settings-summary {
+    gap: 0.5rem;
+    justify-content: flex-start;
+    overflow-x: auto;
+    padding: 0.2rem 0;
+  }
+  
+  .summary-item {
+    padding: 0.2rem 0.4rem;
+    font-size: 0.7rem;
+    white-space: nowrap;
+  }
+  
+  .settings-toggle-button span {
+    display: none;
+  }
+
+  .main-container {
+  display: flex;
+  flex-direction: row;
+  height: 100vh;
+  width: 100vw;
+}
   
   .left-panel {
     width: 100% !important; /* !important를 추가하여 다른 스타일 오버라이드 */
@@ -400,10 +574,18 @@ const isAnyImageGenerating = computed(() => scenarioStore.isAnyImageGenerating);
 
 .left-panel {
   width: 30%;
-  padding-right: 1rem;
+  min-width: 0;
+  padding-right: 0.5rem;
   display: flex;
   flex-direction: column;
-  overflow-y: auto;
+  overflow-y: auto; /* 세로 스크롤 허용 */
+  transition: width 0.3s ease;
+  max-height: 100vh; /* 화면 높이를 넘지 않도록 제한 */
+  flex: 1 1 0;
+}
+
+.left-panel.fullscreen-editor {
+  width: 100%;
 }
 
 .right-panel {
@@ -413,12 +595,14 @@ const isAnyImageGenerating = computed(() => scenarioStore.isAnyImageGenerating);
 
 .scenario-editor {
   flex: 1;
-  margin-bottom: 1rem;
-  overflow-x: auto;
+  margin-bottom: 0.5rem;
+  padding: 0;
 }
 
 .image-viewer {
   height: 100%;
-  overflow: auto;
+  overflow: hidden; /* 스크롤 비활성화 */
+  display: flex;
+  flex-direction: column;
 }
 </style>

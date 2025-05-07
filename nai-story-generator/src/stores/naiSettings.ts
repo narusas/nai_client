@@ -42,7 +42,7 @@ export const useNaiSettingsStore = defineStore('naiSettings', {
       useOrder: true,
       cfg_rescale: 0.8,
       noise_schedule: 'karras',
-      autoDownload: false,
+      autoDownload: true,
       imageFormat: 'jpg',
       characterPrompts: []
     } as NaiSettings
