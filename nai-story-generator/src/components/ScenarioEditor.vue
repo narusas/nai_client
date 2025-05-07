@@ -84,12 +84,20 @@
 
     <!-- 컷 리스트 섹션 -->
     <div class="cuts-section">
-      <div class="cuts-header" @click="toggleCutListVisibility">
-        <h3>컷 목록</h3>
-        <font-awesome-icon 
-          :icon="showCutList ? 'fa-solid fa-chevron-up' : 'fa-solid fa-chevron-down'" 
-          class="toggle-icon"
-        />
+      <div class="cuts-header">
+        <div class="cuts-header-left">
+          <h3>컷 목록</h3>
+          <button v-if="showCutList" @click="handleAddCut" class="add-cut-button-header">
+            <font-awesome-icon icon="fa-solid fa-plus" />
+            <span>새 컷 추가</span>
+          </button>
+        </div>
+        <div class="toggle-button" @click="toggleCutListVisibility">
+          <font-awesome-icon 
+            :icon="showCutList ? 'fa-solid fa-chevron-up' : 'fa-solid fa-chevron-down'" 
+            class="toggle-icon"
+          />
+        </div>
       </div>
       
       <div v-if="showCutList" class="cuts-container" ref="cutsContainerEl">
@@ -114,11 +122,6 @@
             @view-image="handleViewImage($event)"
           />
         </div>
-        
-        <button @click="handleAddCut" class="add-cut-button">
-          <font-awesome-icon icon="fa-solid fa-plus" />
-          <span>새 컷 추가</span>
-        </button>
       </div>
     </div>
 
@@ -195,21 +198,31 @@ import { ScenarioRepositoryImpl } from '@/adapters/repositories/ScenarioReposito
 import CutCard from './CutCard.vue';
 import PromptItemList from './PromptItemList.vue';
 import { v4 as uuidv4 } from 'uuid';
+import { saveGeneratedImage, getGeneratedImagesForScenario, saveRepresentativeImage } from '../services/imageDbService';
 
-
-
-const mockImageRepository: ImageRepository = {
+// ImageRepository 구현
+const imageRepository: ImageRepository = {
   async saveImage(imageData: ImageData): Promise<void> {
-    console.warn('Mock ImageRepository: saveImage called', imageData);
+    console.log('ImageRepository: saveImage called', imageData);
+    // 이미지 저장 로직 구현
   },
   async saveRepresentativeImage(cutId: string, imageUrl: string): Promise<void> {
-    console.warn('Mock ImageRepository: saveRepresentativeImage called', cutId, imageUrl);
+    console.log('ImageRepository: saveRepresentativeImage called', cutId, imageUrl);
+    await saveRepresentativeImage(cutId, imageUrl, currentScenario.value?.id || '');
   },
+  async saveGeneratedImage(imageId: string, imageUrl: string, scenarioId: string, cutId: string): Promise<void> {
+    console.log('ImageRepository: saveGeneratedImage called', imageId, cutId);
+    await saveGeneratedImage(imageId, imageUrl, scenarioId, cutId);
+  },
+  async getGeneratedImagesForScenario(scenarioId: string): Promise<{ imageId: string; imageUrl: string; cutId: string }[]> {
+    console.log('ImageRepository: getGeneratedImagesForScenario called', scenarioId);
+    return await getGeneratedImagesForScenario(scenarioId);
+  }
 };
 
 // --- DI Setup ---
 const scenarioRepository = new ScenarioRepositoryImpl();
-const scenarioUseCases = new ScenarioUseCases(scenarioRepository, new NaiApiAdapter(), mockImageRepository);
+const scenarioUseCases = new ScenarioUseCases(scenarioRepository, new NaiApiAdapter(), imageRepository);
 const scenarioStore = useScenarioStore();
 
 const negativePromptHistoryList = ref<string[]>([]); 
@@ -281,23 +294,18 @@ function addLeadingPromptItem() {
   
   console.log('[ScenarioEditor] 선행 프롬프트 아이템 추가됨:', newPromptItem);
   console.log('[ScenarioEditor] 업데이트된 선행 프롬프트 아이템:', updatedItems);
-  
-  // 변경사항 저장
-  handleSaveScenario();
 }
 
 function removeLeadingPromptItem(index: number) {
   if (!currentScenario.value || !currentScenario.value.leadingPromptItems) return;
   
   currentScenario.value.leadingPromptItems.splice(index, 1);
-  handleSaveScenario();
 }
 
 function toggleLeadingPromptItemEnabled(index: number, enabled: boolean) {
   if (!currentScenario.value || !currentScenario.value.leadingPromptItems) return;
   
   currentScenario.value.leadingPromptItems[index].enabled = enabled;
-  handleSaveScenario();
 }
 
 function updateLeadingPromptItemProbability(index: number, probability: number) {
@@ -306,14 +314,12 @@ function updateLeadingPromptItemProbability(index: number, probability: number) 
   // 확률은 0-100 사이의 값으로 제한
   const validProbability = Math.max(0, Math.min(100, probability));
   currentScenario.value.leadingPromptItems[index].probability = validProbability;
-  handleSaveScenario();
 }
 
 function updateLeadingPromptItem(index: number, field: 'prompt' | 'negativePrompt', value: string) {
   if (!currentScenario.value || !currentScenario.value.leadingPromptItems) return;
   
   currentScenario.value.leadingPromptItems[index][field] = value;
-  handleSaveScenario();
 }
 
 // PromptItemList 컴포넌트에서 update-prompt 이벤트 처리
@@ -350,23 +356,18 @@ function addTrailingPromptItem() {
   
   console.log('[ScenarioEditor] 후행 프롬프트 아이템 추가됨:', newPromptItem);
   console.log('[ScenarioEditor] 업데이트된 후행 프롬프트 아이템:', updatedItems);
-  
-  // 변경사항 저장
-  handleSaveScenario();
 }
 
 function removeTrailingPromptItem(index: number) {
   if (!currentScenario.value || !currentScenario.value.trailingPromptItems) return;
   
   currentScenario.value.trailingPromptItems.splice(index, 1);
-  handleSaveScenario();
 }
 
 function toggleTrailingPromptItemEnabled(index: number, enabled: boolean) {
   if (!currentScenario.value || !currentScenario.value.trailingPromptItems) return;
   
   currentScenario.value.trailingPromptItems[index].enabled = enabled;
-  handleSaveScenario();
 }
 
 function updateTrailingPromptItemProbability(index: number, probability: number) {
@@ -375,14 +376,12 @@ function updateTrailingPromptItemProbability(index: number, probability: number)
   // 확률은 0-100 사이의 값으로 제한
   const validProbability = Math.max(0, Math.min(100, probability));
   currentScenario.value.trailingPromptItems[index].probability = validProbability;
-  handleSaveScenario();
 }
 
 function updateTrailingPromptItem(index: number, field: 'prompt' | 'negativePrompt', value: string) {
   if (!currentScenario.value || !currentScenario.value.trailingPromptItems) return;
   
   currentScenario.value.trailingPromptItems[index][field] = value;
-  handleSaveScenario();
 }
 
 // PromptItemList 컴포넌트에서 update-prompt 이벤트 처리
@@ -444,6 +443,65 @@ async function loadAllScenarioSummaries() {
   }
 }
 
+// 시나리오의 모든 이미지 불러오기
+async function loadAllImagesForScenario(scenarioId: string) {
+  console.log(`시나리오 ${scenarioId}의 모든 이미지 불러오기 시작`);
+  try {
+    // 시나리오의 모든 이미지 가져오기
+    const images = await scenarioUseCases.getGeneratedImagesForScenario(scenarioId);
+    console.log(`시나리오 ${scenarioId}의 이미지 ${images.length}개 불러오기 완료`);
+    
+    // 각 컷에 해당하는 이미지 업데이트
+    if (images.length > 0 && currentScenario.value) {
+      // 컷별로 이미지 그룹화
+      const imagesByCut = images.reduce((acc, img) => {
+        if (!acc[img.cutId]) {
+          acc[img.cutId] = [];
+        }
+        acc[img.cutId].push(img);
+        return acc;
+      }, {} as Record<string, { imageId: string; imageUrl: string; cutId: string }[]>);
+      
+      // 각 컷에 이미지 업데이트
+      for (const cut of currentScenario.value.cuts) {
+        const cutImages = imagesByCut[cut.id];
+        if (cutImages && cutImages.length > 0) {
+          // 기존 generatedImages 배열이 없으면 초기화
+          if (!cut.generatedImages) {
+            cut.generatedImages = [];
+          }
+          
+          // IndexedDB에서 불러온 이미지를 컷의 generatedImages에 추가
+          for (const img of cutImages) {
+            // 이미 있는 이미지인지 확인
+            const existingImageIndex = cut.generatedImages.findIndex(genImg => 
+              genImg.id === img.imageId || genImg.url === img.imageUrl
+            );
+            
+            if (existingImageIndex === -1) {
+              // 새 이미지 객체 생성
+              const newImageData: ImageData = {
+                id: img.imageId,
+                url: img.imageUrl,
+                createdAt: new Date(),
+                width: 0, // 기본값 설정 (실제 값은 이미지에서 추출 불가능)
+                height: 0,
+                seed: 0,
+                characterPrompts: [],
+              };
+              
+              cut.generatedImages.push(newImageData);
+              console.log(`컷 ${cut.id}에 이미지 추가: ${img.imageId}`);
+            }
+          }
+        }
+      }
+    }
+  } catch (error) {
+    console.error(`시나리오 ${scenarioId}의 이미지 불러오기 오류:`, error);
+  }
+}
+
 async function handleSelectScenarioFromModal(scenarioId: string) {
   closeScenarioListModal();
   isGlobalLoading.value = true;
@@ -451,6 +509,9 @@ async function handleSelectScenarioFromModal(scenarioId: string) {
     const scenario = await scenarioUseCases.getScenarioById(scenarioId);
     if (scenario) {
       currentScenario.value = scenario;
+      
+      // 시나리오의 모든 이미지 불러오기
+      await loadAllImagesForScenario(scenarioId);
     } else {
       console.warn(`Scenario with id ${scenarioId} not found.`);
       await handleNewScenario(); // Fallback to new if selected not found
@@ -495,6 +556,7 @@ function handleAddCut() {
   nextTick(() => {
     cutsContainerEl.value?.scrollTo({ left: cutsContainerEl.value.scrollWidth, behavior: 'smooth' });
   });
+  handleSaveScenario(); // 컷 추가 시에는 저장 유지 (명시적 액션으로 간주)
 }
 
 function handleRemoveCut(cutId: string) {
@@ -502,6 +564,7 @@ function handleRemoveCut(cutId: string) {
   const index = currentScenario.value.cuts.findIndex(cut => cut.id === cutId);
   if (index !== -1) {
     currentScenario.value.cuts.splice(index, 1);
+    handleSaveScenario(); // 컷 삭제 시에는 저장 유지 (명시적 액션으로 간주)
   }
 }
 
@@ -521,8 +584,8 @@ function handleUpdateCut(index: number, updatedCut: Cut) {
     
     console.log('[ScenarioEditor] currentScenario.value.cuts after update:', JSON.parse(JSON.stringify(currentScenario.value.cuts)));
     
-    // 시나리오 저장
-    handleSaveScenario();
+    // 자동 저장 제거 - 명시적 저장 버튼 또는 이미지 생성 시에만 저장
+    // handleSaveScenario();
   } else {
     console.error(`[ScenarioEditor] handleUpdateCut: Cut not found at index ${index}`);
   }
@@ -657,8 +720,16 @@ async function handleGenerateImagesForCut(cutData: Cut) {
     
     console.log(`[ScenarioEditor] Calling generateImagesForCut with scenarioId: ${currentScenario.value.id}, cutIndex: ${cutIndex}`);
     
-    // 컷 정보를 저장하여 시나리오에 업데이트
-    await scenarioUseCases.saveScenario(currentScenario.value);
+    // 이미지 생성 전에 시나리오 저장 (이미지 생성은 명시적 액션이므로 저장 유지)
+    // 현재 이미지 뷰어에 표시된 이미지 정보 저장
+    const currentViewingImage = scenarioStore.getSelectedImage();
+    
+    await handleSaveScenario();
+    
+    // 저장 후 이미지 뷰어 상태 복원 (깨빡임 방지)
+    if (currentViewingImage) {
+      scenarioStore.setSelectedImage(currentViewingImage);
+    }
     
     const generatedImages = await scenarioUseCases.generateImagesForCut(
       cut.id, 
@@ -686,9 +757,24 @@ async function handleGenerateImagesForCut(cutData: Cut) {
         await scenarioUseCases.saveRepresentativeImage(cut.id, generatedImages[0].url);
       }
       
+      // 모든 생성된 이미지를 IndexedDB에 저장
+      for (const image of generatedImages) {
+        try {
+          // 이미지 ID가 없는 경우 임의로 생성
+          const imageId = image.id || `${cut.id}-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+          await scenarioUseCases.saveGeneratedImage(imageId, image.url, scenario.value.id, cut.id);
+          console.log(`이미지 저장 완료: ${imageId}`);
+        } catch (error) {
+          console.error('이미지 저장 중 오류:', error);
+        }
+      }
+      
       // 생성된 첫 번째 이미지를 이미지 뷰어에 바로 보여주기
       if (generatedImages[0]) {
-        handleViewImage(generatedImages[0]);
+        // 약간의 지연 후 이미지 뷰어 업데이트 (깨빡임 방지)
+        setTimeout(() => {
+          handleViewImage(generatedImages[0]);
+        }, 100);
       }
 
       // 네거티브 프롬프트 히스토리 추가
@@ -1145,6 +1231,10 @@ onMounted(async () => {
   font-size: 1rem;
 }
 
+.toggle-button {
+  cursor: pointer;
+}
+
 .toggle-icon {
   transition: transform 0.2s;
 }
@@ -1295,8 +1385,13 @@ input:checked + .slider:before {
   padding: 0.75rem 1rem;
   background-color: #f0f0f0;
   border-radius: 4px;
-  cursor: pointer;
   margin-bottom: 0.5rem;
+}
+
+.cuts-header-left {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
 }
 
 .cuts-header h3 {
@@ -1306,6 +1401,7 @@ input:checked + .slider:before {
 
 .cuts-container {
   margin-top: 0.5rem;
+  overflow-x: hidden;
 }
 
 .no-cuts-message {
@@ -1317,8 +1413,13 @@ input:checked + .slider:before {
 
 .cuts-list {
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   gap: 1rem;
+  overflow-x: auto;
+  padding: 1rem 0.5rem;
+  scroll-padding: 0.5rem;
+  scroll-snap-type: x mandatory;
+  -webkit-overflow-scrolling: touch;
 }
 
 .add-cut-button {
@@ -1335,6 +1436,24 @@ input:checked + .slider:before {
 }
 
 .add-cut-button:hover {
+  background-color: #fb8c00;
+}
+
+.add-cut-button-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.4rem 0.8rem;
+  background-color: #FF9800;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.9rem;
+  transition: background-color 0.2s;
+}
+
+.add-cut-button-header:hover {
   background-color: #fb8c00;
 }
 

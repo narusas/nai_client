@@ -56,7 +56,7 @@
           <div class="tab-content">
             <div v-if="activeTab[promptItem.id || index] !== 'negative'" class="prompt-textarea-container">
               <textarea 
-                :value="promptItem.prompt" 
+                :value="localItems[index]?.prompt" 
                 class="prompt-textarea"
                 @input="updatePromptItem(index, 'prompt', $event.target.value)"
                 placeholder="프롬프트를 입력하세요"
@@ -64,7 +64,7 @@
             </div>
             <div v-if="activeTab[promptItem.id || index] === 'negative'" class="prompt-textarea-container">
               <textarea 
-                :value="promptItem.negativePrompt" 
+                :value="localItems[index]?.negativePrompt" 
                 class="prompt-textarea"
                 @input="updatePromptItem(index, 'negativePrompt', $event.target.value)"
                 placeholder="네거티브 프롬프트를 입력하세요"
@@ -84,7 +84,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, PropType } from 'vue';
+import { ref, PropType, watch } from 'vue';
 import { FontAwesomeIcon } from '@fortawesome/vue-fontawesome';
 import { VSwitch } from 'vuetify/components';
 import { PromptItem } from '@/domain/scenario/entities/PromptItem';
@@ -182,45 +182,52 @@ function updatePromptItemProbability(index: number, probability: number) {
   emit('update-probability', { index, probability });
 }
 
-// 프롬프트 아이템 내용 업데이트
+// 로컬 상태 관리를 위한 변수들
+const localItems = ref<PromptItem[]>([]);
+const pendingUpdates = ref<Map<string, NodeJS.Timeout>>(new Map());
+
+// props.modelValue가 변경될 때 localItems 업데이트
+watch(() => props.modelValue, (newValue) => {
+  if (newValue && Array.isArray(newValue)) {
+    // 깊은 복사 수행
+    localItems.value = newValue.map(item => ({
+      id: item.id || crypto.randomUUID(),
+      prompt: item.prompt || '',
+      negativePrompt: item.negativePrompt || '',
+      probability: typeof item.probability === 'number' ? item.probability : 100,
+      enabled: item.enabled !== false
+    }));
+  } else {
+    localItems.value = [];
+  }
+}, { immediate: true, deep: true });
+
+// 프롬프트 아이템 내용 업데이트 (디바운스 적용)
 function updatePromptItem(index: number, field: 'prompt' | 'negativePrompt', value: string) {
-  console.log(`[PromptItemList] updatePromptItem 호출됨 - index: ${index}, field: ${field}, value: ${value}`);
-  
   try {
-    // 기존 배열을 확인하고 깊은 복사 수행
-    const currentItems: PromptItem[] = [];
-    
-    // 기존 배열이 있으면 각 요소를 깊은 복사
-    if (props.modelValue && Array.isArray(props.modelValue)) {
-      props.modelValue.forEach(item => {
-        if (item) {
-          currentItems.push({
-            id: item.id || crypto.randomUUID(),
-            prompt: item.prompt || '',
-            negativePrompt: item.negativePrompt || '',
-            probability: typeof item.probability === 'number' ? item.probability : 100,
-            enabled: item.enabled !== false
-          });
-        }
-      });
-    }
-    
     // 해당 아이템이 있는지 확인
-    if (index >= 0 && index < currentItems.length) {
-      // 필드 업데이트
-      currentItems[index][field] = value;
+    if (index >= 0 && index < localItems.value.length) {
+      // 로컬 상태만 즉시 업데이트 (화면 반영용)
+      localItems.value[index][field] = value;
       
-      console.log(`[PromptItemList] 업데이트된 아이템:`, currentItems[index]);
-      console.log(`[PromptItemList] 업데이트된 배열 (길이: ${currentItems.length}):`, currentItems);
+      // 이전에 예약된 업데이트가 있으면 취소
+      const updateKey = `${index}-${field}`;
+      if (pendingUpdates.value.has(updateKey)) {
+        clearTimeout(pendingUpdates.value.get(updateKey));
+      }
       
-      // v-model 업데이트
-      emit('update:modelValue', currentItems);
+      // 300ms 후에 실제 업데이트 수행 (디바운스)
+      const timeoutId = setTimeout(() => {
+        // 부모 컴포넌트에 변경 알림
+        emit('update:modelValue', [...localItems.value]);
+        emit('update-prompt', { index, field, value });
+        pendingUpdates.value.delete(updateKey);
+      }, 300);
+      
+      pendingUpdates.value.set(updateKey, timeoutId);
     } else {
-      console.warn(`[PromptItemList] 유효하지 않은 인덱스: ${index}, 배열 길이: ${currentItems.length}`);
+      console.warn(`[PromptItemList] 유효하지 않은 인덱스: ${index}, 배열 길이: ${localItems.value.length}`);
     }
-    
-    // 기존 이벤트도 발생
-    emit('update-prompt', { index, field, value });
   } catch (error) {
     console.error('[PromptItemList] updatePromptItem 오류 발생:', error);
   }

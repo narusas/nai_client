@@ -4,7 +4,7 @@
 import { blobUrlToBase64 } from '../utils/imageUtils';
 
 const DB_NAME = 'nai-image-db';
-const DB_VERSION = 2;
+const DB_VERSION = 3; // 버전 증가
 const REPRESENTATIVE_STORE = 'representative-images';
 const GENERATED_IMAGES_STORE = 'generated-images';
 
@@ -39,6 +39,22 @@ async function openDb(): Promise<IDBDatabase> {
         // imageId를 키로 사용
         db.createObjectStore(GENERATED_IMAGES_STORE, { keyPath: 'imageId' });
         console.log('생성된 이미지 스토어 생성 완료');
+      }
+      
+      // DB_VERSION 3부터 - 생성된 이미지 스토어에 인덱스 추가
+      if (oldVersion < 3 && db.objectStoreNames.contains(GENERATED_IMAGES_STORE)) {
+        const store = event.target.transaction.objectStore(GENERATED_IMAGES_STORE);
+        
+        // 시나리오 ID와 컷 ID로 인덱스 생성
+        if (!store.indexNames.contains('scenarioId')) {
+          store.createIndex('scenarioId', 'scenarioId', { unique: false });
+        }
+        
+        if (!store.indexNames.contains('cutId')) {
+          store.createIndex('cutId', 'cutId', { unique: false });
+        }
+        
+        console.log('생성된 이미지 스토어 인덱스 생성 완료');
       }
     };
   });
@@ -128,6 +144,93 @@ export async function saveGeneratedImage(imageId: string, imageUrl: string, scen
   }
 }
 
+// 시나리오의 모든 생성된 이미지 가져오기
+export async function getGeneratedImagesForScenario(scenarioId: string): Promise<{ imageId: string; imageUrl: string; cutId: string }[]> {
+  try {
+    const db = await openDb();
+    const transaction = db.transaction([GENERATED_IMAGES_STORE], 'readonly');
+    const store = transaction.objectStore(GENERATED_IMAGES_STORE);
+    
+    let request;
+    try {
+      // scenarioId 인덱스를 사용하여 해당 시나리오의 이미지만 가져오기
+      const index = store.index('scenarioId');
+      request = index.getAll(scenarioId);
+    } catch (indexError) {
+      console.warn('인덱스 사용 실패, 모든 이미지를 가져와서 필터링합니다:', indexError);
+      // 인덱스가 없는 경우 모든 이미지를 가져와서 필터링
+      request = store.getAll();
+    }
+    
+    return new Promise((resolve, reject) => {
+      request.onsuccess = () => {
+        let images = request.result;
+        
+        // 인덱스를 사용하지 않은 경우 시나리오 ID로 필터링
+        if (!store.indexNames.contains('scenarioId')) {
+          images = images.filter(img => img.scenarioId === scenarioId);
+        }
+        
+        console.log(`시나리오 ${scenarioId}의 이미지 ${images.length}개 로드 완료`);
+        resolve(images.map(img => ({
+          imageId: img.imageId,
+          imageUrl: img.imageUrl,
+          cutId: img.cutId
+        })));
+      };
+      
+      request.onerror = (event) => {
+        console.error('이미지 가져오기 실패:', event);
+        reject('이미지를 가져오는 중 오류가 발생했습니다.');
+      };
+      
+      transaction.oncomplete = () => {
+        db.close();
+      };
+    });
+  } catch (error) {
+    console.error('이미지 가져오기 중 오류:', error);
+    return [];
+  }
+}
+
+// 특정 컷의 모든 생성된 이미지 가져오기
+export async function getGeneratedImagesForCut(cutId: string): Promise<{ imageId: string; imageUrl: string; cutId: string }[]> {
+  try {
+    const db = await openDb();
+    const transaction = db.transaction([GENERATED_IMAGES_STORE], 'readonly');
+    const store = transaction.objectStore(GENERATED_IMAGES_STORE);
+    
+    // cutId 인덱스를 사용하여 해당 컷의 이미지만 가져오기
+    const index = store.index('cutId');
+    const request = index.getAll(cutId);
+    
+    return new Promise((resolve, reject) => {
+      request.onsuccess = () => {
+        const images = request.result;
+        console.log(`컷 ${cutId}의 이미지 ${images.length}개 로드 완료`);
+        resolve(images.map(img => ({
+          imageId: img.imageId,
+          imageUrl: img.imageUrl,
+          cutId: img.cutId
+        })));
+      };
+      
+      request.onerror = (event) => {
+        console.error('이미지 가져오기 실패:', event);
+        reject('이미지를 가져오는 중 오류가 발생했습니다.');
+      };
+      
+      transaction.oncomplete = () => {
+        db.close();
+      };
+    });
+  } catch (error) {
+    console.error('이미지 가져오기 중 오류:', error);
+    return [];
+  }
+}
+
 // 생성된 이미지 가져오기
 export async function getGeneratedImage(imageId: string): Promise<string | null> {
   try {
@@ -165,39 +268,7 @@ export async function getGeneratedImage(imageId: string): Promise<string | null>
   }
 }
 
-// 시나리오의 모든 생성된 이미지 가져오기
-export async function getGeneratedImagesForScenario(scenarioId: string): Promise<{ imageId: string; imageUrl: string; cutId: string }[]> {
-  try {
-    const db = await openDb();
-    const transaction = db.transaction([GENERATED_IMAGES_STORE], 'readonly');
-    const store = transaction.objectStore(GENERATED_IMAGES_STORE);
-    
-    // 모든 이미지 가져오기
-    const request = store.getAll();
-    
-    return new Promise((resolve, reject) => {
-      request.onsuccess = () => {
-        const allImages = request.result;
-        // 현재 시나리오에 해당하는 이미지만 필터링
-        const scenarioImages = allImages.filter(img => img.scenarioId === scenarioId);
-        console.log(`시나리오 ${scenarioId}의 생성된 이미지 ${scenarioImages.length}개 로드 완료`);
-        resolve(scenarioImages);
-      };
-      
-      request.onerror = (event) => {
-        console.error('생성된 이미지 불러오기 실패:', event);
-        reject('이미지를 불러오는 중 오류가 발생했습니다.');
-      };
-      
-      transaction.oncomplete = () => {
-        db.close();
-      };
-    });
-  } catch (error) {
-    console.error('생성된 이미지 불러오기 중 오류:', error);
-    return [];
-  }
-}
+
 
 // 특정 시나리오의 모든 대표 이미지 불러오기
 export async function getRepresentativeImages(scenarioId: string): Promise<{ cutId: string; imageUrl: string }[]> {

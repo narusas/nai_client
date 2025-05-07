@@ -153,9 +153,19 @@ function loadCurrentCutImages(selectedImageData: any) {
   }
 }
 
-// 시나리오 스토어에서 선택된 이미지 감시
+// 시나리오 스토어에서 선택된 이미지 감시 (깨빡임 방지를 위한 최적화)
+let previousImage = null;
+
 watch(() => scenarioStore.getSelectedImage(), (newImage) => {
   console.log('이미지 선택 변경 감지:', newImage);
+  
+  // 동일한 이미지로 재설정되는 경우 무시 (깨빡임 방지)
+  if (newImage === previousImage && newImage === currentImage.value) {
+    console.log('동일한 이미지 재설정, 무시');
+    return;
+  }
+  
+  previousImage = newImage;
   
   if (newImage) {
     console.log('새 이미지 선택됨:', newImage);
@@ -165,15 +175,25 @@ watch(() => scenarioStore.getSelectedImage(), (newImage) => {
     // 선택된 이미지 데이터 가져오기
     const selectedImageData = scenarioStore.getSelectedImageData();
     if (selectedImageData && selectedImageData.url) {
-      loadCurrentCutImages(selectedImageData);
+      // 현재 이미지가 이미 로드된 경우 재로드하지 않음 (깨빡임 방지)
+      if (currentCutImages.value.length > 0 && 
+          currentCutImages.value.some(img => img.url === selectedImageData.url) &&
+          currentImageIndex.value !== -1) {
+        console.log('이미 로드된 이미지 컷, 인덱스 유지');
+      } else {
+        loadCurrentCutImages(selectedImageData);
+      }
     } else if (!selectedImageData && newImage) {
       // getSelectedImage()는 있는데 getSelectedImageData()가 없는 비정상적인 경우,
       // 또는 selectedImageData에 url이 없는 경우, 이미지 뷰어만 초기화
-      console.warn('getSelectedImageData()가 null이거나 url이 없습니다. 이미지 뷰어를 초기화합니다.');
-      currentCutImages.value = [];
-      currentImageIndex.value = -1;
+      console.warn('getSelectedImageData()가 null이거나 url이 없습니다.');
+      // 현재 이미지가 유효하면 유지 (깨빡임 방지)
+      if (!currentCutImages.value.length) {
+        currentCutImages.value = [];
+        currentImageIndex.value = -1;
+      }
     }
-  } else {
+  } else if (!newImage && currentImage.value) {
     // 선택된 이미지가 없으면 초기화
     console.log('이미지 초기화');
     currentImage.value = null;

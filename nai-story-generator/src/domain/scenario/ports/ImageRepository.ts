@@ -17,4 +17,20 @@ export interface ImageRepository {
    * @param imageUrl 대표 이미지 URL
    */
   saveRepresentativeImage(cutId: string, imageUrl: string): Promise<void>;
+
+  /**
+   * 생성된 이미지 저장
+   * @param imageId 이미지 ID
+   * @param imageUrl 이미지 URL
+   * @param scenarioId 시나리오 ID
+   * @param cutId 컷 ID
+   */
+  saveGeneratedImage(imageId: string, imageUrl: string, scenarioId: string, cutId: string): Promise<void>;
+
+  /**
+   * 시나리오의 모든 생성된 이미지 가져오기
+   * @param scenarioId 시나리오 ID
+   * @returns 이미지 데이터 배열
+   */
+  getGeneratedImagesForScenario(scenarioId: string): Promise<{ imageId: string; imageUrl: string; cutId: string }[]>;
 }

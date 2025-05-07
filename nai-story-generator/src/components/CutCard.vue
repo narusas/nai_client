@@ -388,7 +388,12 @@ const selectRepresentativeImage = (imageUrl: string) => {
 // 썸네일 이미지 클릭 처리
 const handleThumbnailClick = (imageData: any) => {
   // 클릭 시에는 이미지 뷰어만 열기
-  emit('view-image', imageData);
+  console.log('이미지 클릭:', imageData);
+  emit('view-image', {
+    imageData,
+    cutId: props.cutData.id,
+    allImages: props.cutData.generatedImages || []
+  });
 };
 
 // 썸네일 이미지 더블클릭 처리
@@ -434,8 +439,15 @@ const emitRemoveCut = () => {
   background-color: #f9f9f9;
   box-shadow: 0 2px 4px rgba(0,0,0,0.05);
   overflow: hidden; /* Ensures child elements don't break rounded corners */
-  width: 500px; /* 너비 축소 */
+  width: 350px; /* 너비 고정 - 가로 배치에 적합한 크기로 조정 */
   flex-shrink: 0; /* 부모 컨테이너가 작아질 때 압축되지 않도록 설정 */
+  scroll-snap-align: start; /* 스크롤 스납 적용 */
+  transition: transform 0.2s ease; /* 호버 효과를 위한 트랜지션 */
+}
+
+.cut-card:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 5px 15px rgba(0,0,0,0.1);
 }
 
 .cut-header {
