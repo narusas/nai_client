@@ -31,36 +31,40 @@
     </div>
     
     <!-- 대표 이미지 패널 (최상단으로 이동) -->
-    <div class="cut-image-preview" @click="handleRepresentativeImagePreviewClick">
-      <img 
-        v-if="props.cutData.representativeImage" 
-        :src="props.cutData.representativeImage" 
-        alt="대표 이미지"
-        class="representative-image"
-      />
-      <div v-else class="no-image">
-        이미지 없음
-      </div>
-    </div>
-    
-    <!-- 과거 생성 이미지 목록 썸네일 (최상단으로 이동) -->
-    <div class="cut-thumbnails">
-      <h4>생성된 이미지</h4>
-      <div class="thumbnails-container">
-        <div 
-          v-for="(imageData, imgIdx) in props.cutData.generatedImages" 
-          :key="imageData.id || imgIdx" 
-          class="thumbnail"
-          :class="{ 'selected': props.cutData.representativeImage === imageData.url }"
-          @click="handleThumbnailClick(imageData)"
-          :title="`이미지 ${imgIdx + 1}${imageData.seed ? ' (Seed: ' + imageData.seed + ')' : ''}`"
-        >
-          <img :src="imageData.url" :alt="`생성된 이미지 ${imgIdx + 1}`" />
-          <span class="thumbnail-number">{{ imgIdx + 1 }}</span>
-          <span v-if="props.cutData.representativeImage === imageData.url" class="thumbnail-badge">대표</span>
+    <div class="image-panel">
+      <!-- 대표 이미지 -->
+      <div class="cut-image-preview" @click="handleRepresentativeImagePreviewClick">
+        <img 
+          v-if="props.cutData.representativeImage" 
+          :src="props.cutData.representativeImage" 
+          alt="대표 이미지"
+          class="representative-image"
+        />
+        <div v-else class="no-image">
+          이미지 없음
         </div>
-        <div v-if="!props.cutData.generatedImages || props.cutData.generatedImages.length === 0" class="empty-state-small">
-          생성된 이미지가 없습니다.
+      </div>
+      
+      <!-- 과거 생성 이미지 목록 썸네일 -->
+      <div class="cut-thumbnails">
+        <h4>생성된 이미지</h4>
+        <div class="thumbnails-container">
+          <div 
+            v-for="(imageData, imgIdx) in props.cutData.generatedImages" 
+            :key="imageData.id || imgIdx" 
+            class="thumbnail"
+            :class="{ 'selected': props.cutData.representativeImage === imageData.url }"
+            @click="handleThumbnailClick(imageData)"
+            @dblclick="handleThumbnailDoubleClick(imageData)"
+            :title="`이미지 ${imgIdx + 1}${imageData.seed ? ' (Seed: ' + imageData.seed + ')' : ''} (더블클릭: 대표 이미지로 설정)`"
+          >
+            <img :src="imageData.url" :alt="`생성된 이미지 ${imgIdx + 1}`" />
+            <span class="thumbnail-number">{{ imgIdx + 1 }}</span>
+            <span v-if="props.cutData.representativeImage === imageData.url" class="thumbnail-badge">대표</span>
+          </div>
+          <div v-if="!props.cutData.generatedImages || props.cutData.generatedImages.length === 0" class="empty-state-small">
+            생성된 이미지가 없습니다.
+          </div>
         </div>
       </div>
     </div>
@@ -90,9 +94,9 @@
             <h4>메인 프롬프트 아이템</h4>
           </div>
           <PromptItemList
-            v-model="props.cutData.mainPromptItems"
+            :modelValue="mainPromptItemsRef"
+            @update:modelValue="handleMainPromptItemsUpdate"
             add-button-text="메인 프롬프트 아이템 추가"
-            @add-prompt-item="addMainPromptItem"
             @remove-prompt-item="removeMainPromptItem"
             @toggle-enabled="(payload) => toggleMainPromptItemEnabled(payload.index, payload.enabled)"
             @update-probability="(payload) => updateMainPromptItemProbability(payload.index, payload.probability)"
@@ -129,7 +133,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue';
+import { ref, computed, watch, toRef } from 'vue';
 import { v4 as uuidv4 } from 'uuid';
 import CharacterPromptComponent from './CharacterPrompt.vue'; 
 import ResolutionPanel from './ResolutionPanel.vue'; // ResolutionPanel import
@@ -158,22 +162,55 @@ const emit = defineEmits([
 
 // Local reactive state
 const showPrompts = ref(true); // 기본값을 true로 변경
-const showResolutionPanel = ref(true); // 해상도 설정 패널 표시 상태
-const imageCountWritable = ref(props.cutData.imageCount);
+const showResolutionPanel = ref(false); // 해상도 설정 패널 표시 상태
+const imageCountWritable = ref(props.cutData?.imageCount || 1); // props.cutData가 없을 경우 기본값 1 사용
 
-watch(() => props.cutData.imageCount, (newVal) => {
-  imageCountWritable.value = newVal;
+// 메인 프롬프트 아이템 참조 생성
+const mainPromptItemsRef = computed(() => {
+  return Array.isArray(props.cutData.mainPromptItems) ? props.cutData.mainPromptItems : [];
+});
+
+// 메인 프롬프트 아이템 업데이트 함수
+function handleMainPromptItemsUpdate(newItems: any[]) {
+  console.log('[CutCard] handleMainPromptItemsUpdate 호출됨');
+  console.log('[CutCard] 이전 프롬프트 아이템 배열:', props.cutData.mainPromptItems);
+  console.log('[CutCard] 새 프롬프트 아이템 배열:', newItems);
+  
+  // 데이터 복사하여 작업 (JSON.stringify/parse를 통한 깊은 복사)
+  const updatedCutData = JSON.parse(JSON.stringify(props.cutData));
+  
+  // 새 프롬프트 아이템 업데이트
+  updatedCutData.mainPromptItems = [...newItems];
+  
+  console.log('[CutCard] 업데이트된 컷 데이터:', updatedCutData);
+  console.log('[CutCard] 업데이트된 mainPromptItems 길이:', updatedCutData.mainPromptItems.length);
+  
+  // 업데이트 이벤트 발생
+  emit('update:cutData', updatedCutData);
+}
+
+watch(() => props.cutData?.imageCount, (newVal) => {
+  if (newVal !== undefined) {
+    imageCountWritable.value = newVal;
+  }
 });
 
 // --- General Cut Data Update (excluding resolution changes handled by specific event) ---
 const updateCutData = () => {
-  // Ensure imageCountWritable reflects in cutData before emitting
-  if (props.cutData.imageCount !== imageCountWritable.value) {
-    const updatedCutData = { ...props.cutData, imageCount: imageCountWritable.value };
-    emit('update:cutData', updatedCutData);
-  } else {
-    emit('update:cutData', props.cutData);
+  console.log('[CutCard] updateCutData 호출됨');
+  
+  // 항상 데이터를 복사하여 새 객체로 업데이트
+  const updatedCutData = JSON.parse(JSON.stringify(props.cutData));
+  
+  // 이미지 수 업데이트
+  if (updatedCutData.imageCount !== imageCountWritable.value) {
+    updatedCutData.imageCount = imageCountWritable.value;
   }
+  
+  console.log('[CutCard] 업데이트된 데이터:', updatedCutData);
+  
+  // 업데이트된 데이터 이벤트 발생
+  emit('update:cutData', updatedCutData);
 };
 
 // --- Resolution Panel Event Handler ---
@@ -194,45 +231,99 @@ const toggleResolutionPanel = () => {
 
 // --- Main Prompt Item Management ---
 function addMainPromptItem() {
-  if (!props.cutData.mainPromptItems) {
-    props.cutData.mainPromptItems = [];
+  console.log('[CutCard] addMainPromptItem called');
+  
+  // 데이터 복사하여 작업
+  const updatedCutData = { ...props.cutData };
+  
+  if (!updatedCutData.mainPromptItems) {
+    updatedCutData.mainPromptItems = [];
   }
   
-  props.cutData.mainPromptItems.push({
+  // 새 프롬프트 아이템 생성
+  const newPromptItem = {
     id: uuidv4(),
     prompt: '',
     negativePrompt: '',
     probability: 100,
     enabled: true
-  });
+  };
   
-  updateCutData();
+  console.log('[CutCard] Adding new prompt item:', newPromptItem);
+  
+  // 새 배열을 생성하여 추가
+  updatedCutData.mainPromptItems = [...updatedCutData.mainPromptItems, newPromptItem];
+  
+  console.log('[CutCard] Updated mainPromptItems:', updatedCutData.mainPromptItems);
+  
+  // 업데이트 이벤트 발생
+  emit('update:cutData', updatedCutData);
 }
 
 function toggleMainPromptItemEnabled(index: number, enabled: boolean) {
+  console.log(`[CutCard] toggleMainPromptItemEnabled 호출됨 - index: ${index}, enabled: ${enabled}`);
+  
   if (props.cutData.mainPromptItems && props.cutData.mainPromptItems[index]) {
-    props.cutData.mainPromptItems[index].enabled = enabled;
-    updateCutData();
+    // 데이터 복사하여 작업 (JSON.stringify/parse를 통한 깊은 복사)
+    const updatedCutData = JSON.parse(JSON.stringify(props.cutData));
+    
+    // 활성화 상태 업데이트
+    updatedCutData.mainPromptItems[index].enabled = enabled;
+    
+    console.log('[CutCard] 업데이트된 프롬프트 아이템:', updatedCutData.mainPromptItems[index]);
+    
+    // 업데이트 이벤트 발생
+    emit('update:cutData', updatedCutData);
   }
 }
 
 function updateMainPromptItemProbability(index: number, probability: number) {
+  console.log(`[CutCard] updateMainPromptItemProbability 호출됨 - index: ${index}, probability: ${probability}`);
+  
   if (props.cutData.mainPromptItems && props.cutData.mainPromptItems[index]) {
-    props.cutData.mainPromptItems[index].probability = probability;
-    updateCutData();
+    // 데이터 복사하여 작업 (JSON.stringify/parse를 통한 깊은 복사)
+    const updatedCutData = JSON.parse(JSON.stringify(props.cutData));
+    
+    // 확률 값 업데이트
+    updatedCutData.mainPromptItems[index].probability = probability;
+    
+    console.log('[CutCard] 업데이트된 프롬프트 아이템:', updatedCutData.mainPromptItems[index]);
+    
+    // 업데이트 이벤트 발생
+    emit('update:cutData', updatedCutData);
   }
 }
 
 function updateMainPromptItem(index: number, field: 'prompt' | 'negativePrompt', value: string) {
+  console.log(`[CutCard] updateMainPromptItem 호출됨 - index: ${index}, field: ${field}, value: ${value}`);
+  
   if (props.cutData.mainPromptItems && props.cutData.mainPromptItems[index]) {
-    props.cutData.mainPromptItems[index][field] = value;
-    updateCutData();
+    // 데이터 복사하여 작업 (JSON.stringify/parse를 통한 깊은 복사)
+    const updatedCutData = JSON.parse(JSON.stringify(props.cutData));
+    
+    // 해당 필드 업데이트
+    updatedCutData.mainPromptItems[index][field] = value;
+    
+    console.log('[CutCard] 업데이트된 프롬프트 아이템:', updatedCutData.mainPromptItems[index]);
+    
+    // 업데이트 이벤트 발생
+    emit('update:cutData', updatedCutData);
   }
 }
 
 function removeMainPromptItem(index: number) {
-  props.cutData.mainPromptItems.splice(index, 1);
-  updateCutData();
+  console.log(`[CutCard] removeMainPromptItem 호출됨 - index: ${index}`);
+  
+  // 데이터 복사하여 작업 (JSON.stringify/parse를 통한 깊은 복사)
+  const updatedCutData = JSON.parse(JSON.stringify(props.cutData));
+  
+  // 해당 아이템 삭제
+  updatedCutData.mainPromptItems.splice(index, 1);
+  
+  console.log('[CutCard] 삭제 후 프롬프트 아이템 배열:', updatedCutData.mainPromptItems);
+  
+  // 업데이트 이벤트 발생
+  emit('update:cutData', updatedCutData);
 }
 
 // --- Character Prompt Management ---
@@ -296,11 +387,14 @@ const selectRepresentativeImage = (imageUrl: string) => {
 
 // 썸네일 이미지 클릭 처리
 const handleThumbnailClick = (imageData: any) => {
-  // 먼저 대표 이미지로 선택
-  selectRepresentativeImage(imageData.url);
-  
-  // 이미지 뷰어 열기
+  // 클릭 시에는 이미지 뷰어만 열기
   emit('view-image', imageData);
+};
+
+// 썸네일 이미지 더블클릭 처리
+const handleThumbnailDoubleClick = (imageData: any) => {
+  // 더블클릭 시에는 대표 이미지로 선택
+  selectRepresentativeImage(imageData.url);
 };
 
 const handleRepresentativeImagePreviewClick = () => {
@@ -405,7 +499,7 @@ const emitRemoveCut = () => {
 
 .cut-details-editor {
   flex: 1;
-  padding: 0.3rem 0.5rem;
+  padding: 0.3rem 0;
   overflow-y: visible;
   max-height: none;
 }
@@ -417,19 +511,14 @@ const emitRemoveCut = () => {
   overflow: hidden;
 }
 
-.section-header {
+.image-panel {
   display: flex;
-  justify-content: space-between;
-  align-items: center;
-  background-color: #f5f5f5;
-  padding: 0.3rem 0.5rem;
-  border-bottom: 1px solid #eee;
-}
-
-.section-header h4 {
-  margin: 0;
-  font-size: 1rem;
-  font-weight: 600;
+  flex-direction: column;
+  margin-bottom: 0.5rem;
+  border: 1px solid #e0e0e0;
+  border-radius: 4px;
+  overflow: hidden;
+  background-color: #fff;
 }
 
 .item-editor {

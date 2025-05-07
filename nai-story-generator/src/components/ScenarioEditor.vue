@@ -1,5 +1,177 @@
 <template>
-  <!-- ... -->
+  <div class="scenario-editor-container">
+    <!-- 로딩 인디케이터 -->
+    <div v-if="isGlobalLoading" class="loading-overlay">
+      <div class="loading-spinner"></div>
+      <p>시나리오 로딩 중...</p>
+    </div>
+
+    <!-- 시나리오 관리 헤더 -->
+    <div class="scenario-header">
+      <div class="scenario-title-container">
+        <input 
+          v-model="currentScenario.name" 
+          class="scenario-title-input" 
+          placeholder="시나리오 제목"
+          @blur="handleSaveScenario"
+        />
+      </div>
+      
+      <div class="scenario-actions">
+        <button @click="showScenarioList = true" class="action-button">
+          <font-awesome-icon icon="fa-solid fa-folder-open" />
+          <span>시나리오 목록</span>
+        </button>
+        <button @click="handleNewScenario" class="action-button">
+          <font-awesome-icon icon="fa-solid fa-plus" />
+          <span>새 시나리오</span>
+        </button>
+        <button @click="handleSaveScenario" class="action-button primary">
+          <font-awesome-icon icon="fa-solid fa-save" />
+          <span>저장</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- 전역 프롬프트 패널 -->
+    <div class="global-prompt-panels">
+      <!-- 선행 프롬프트 패널 -->
+      <div class="prompt-panel">
+        <div class="panel-header" @click="toggleLeadingPromptPanel">
+          <h3>선행 프롬프트</h3>
+          <font-awesome-icon 
+            :icon="showLeadingPromptPanel ? 'fa-solid fa-chevron-up' : 'fa-solid fa-chevron-down'" 
+            class="toggle-icon"
+          />
+        </div>
+        
+        <div v-if="showLeadingPromptPanel" class="panel-content">
+          <PromptItemList
+            v-model="currentScenario.leadingPromptItems"
+            add-button-text="선행 프롬프트 추가"
+            @add-prompt-item="addLeadingPromptItem"
+            @remove-prompt-item="removeLeadingPromptItem"
+            @toggle-enabled="toggleLeadingPromptItemEnabled"
+            @update-probability="updateLeadingPromptItemProbability"
+            @update-prompt="handleUpdateLeadingPrompt"
+          />
+        </div>
+      </div>
+      
+      <!-- 후행 프롬프트 패널 -->
+      <div class="prompt-panel">
+        <div class="panel-header" @click="toggleTrailingPromptPanel">
+          <h3>후행 프롬프트</h3>
+          <font-awesome-icon 
+            :icon="showTrailingPromptPanel ? 'fa-solid fa-chevron-up' : 'fa-solid fa-chevron-down'" 
+            class="toggle-icon"
+          />
+        </div>
+        
+        <div v-if="showTrailingPromptPanel" class="panel-content">
+          <PromptItemList
+            v-model="currentScenario.trailingPromptItems"
+            add-button-text="후행 프롬프트 추가"
+            @add-prompt-item="addTrailingPromptItem"
+            @remove-prompt-item="removeTrailingPromptItem"
+            @toggle-enabled="toggleTrailingPromptItemEnabled"
+            @update-probability="updateTrailingPromptItemProbability"
+            @update-prompt="handleUpdateTrailingPrompt"
+          />
+        </div>
+      </div>
+    </div>
+
+    <!-- 컷 리스트 섹션 -->
+    <div class="cuts-section">
+      <div class="cuts-header" @click="toggleCutListVisibility">
+        <h3>컷 목록</h3>
+        <font-awesome-icon 
+          :icon="showCutList ? 'fa-solid fa-chevron-up' : 'fa-solid fa-chevron-down'" 
+          class="toggle-icon"
+        />
+      </div>
+      
+      <div v-if="showCutList" class="cuts-container" ref="cutsContainerEl">
+        <div v-if="currentScenario.cuts.length === 0" class="no-cuts-message">
+          <p>컷이 없습니다. 새 컷을 추가해주세요.</p>
+        </div>
+        
+        <div v-else class="cuts-list">
+          <CutCard 
+            v-for="(cut, index) in currentScenario.cuts" 
+            :key="cut.uniqueId" 
+            :scenarioId="currentScenario.id"
+            :cutData="cut" 
+            :cutIndex="index"
+            :is-generating-image="isGeneratingImageForCut(cut.id)"
+            :negative-prompt-history="negativePromptHistory"
+            @update:cutData="handleUpdateCut(index, $event)"
+            @removeCut="handleRemoveCut($event)"
+            @generateImages="handleGenerateImagesForCut($event)"
+            @selectRepresentativeImageInCut="handleSelectRepresentativeImage($event)"
+            @request-resolution-update="handleResolutionUpdate($event)"
+            @view-image="handleViewImage($event)"
+          />
+        </div>
+        
+        <button @click="handleAddCut" class="add-cut-button">
+          <font-awesome-icon icon="fa-solid fa-plus" />
+          <span>새 컷 추가</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- 시나리오 목록 모달 -->
+    <div v-if="showScenarioList" class="modal-overlay">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h2>시나리오 목록</h2>
+          <button @click="showScenarioList = false" class="close-button">
+            <font-awesome-icon icon="fa-solid fa-times" />
+          </button>
+        </div>
+        
+        <div class="modal-body">
+          <div v-if="allScenarios.length === 0" class="no-scenarios-message">
+            <p>저장된 시나리오가 없습니다.</p>
+          </div>
+          
+          <div v-else class="scenario-list">
+            <div 
+              v-for="scenario in allScenarios" 
+              :key="scenario.id" 
+              class="scenario-item"
+              :class="{ 'active': scenario.id === currentScenario.id }"
+            >
+              <div class="scenario-item-info" @click="handleSelectScenarioFromModal(scenario.id)">
+                <h3>{{ scenario.name }}</h3>
+                <p>{{ new Date(scenario.updatedAt).toLocaleString() }}</p>
+              </div>
+              
+              <button 
+                v-if="scenario.id !== currentScenario.id" 
+                @click="handleDeleteScenarioFromModal(scenario.id)" 
+                class="delete-button"
+              >
+                <font-awesome-icon icon="fa-solid fa-trash" />
+              </button>
+            </div>
+          </div>
+        </div>
+        
+        <div class="modal-footer">
+          <button @click="handleNewScenarioFromModal" class="action-button primary">
+            <font-awesome-icon icon="fa-solid fa-plus" />
+            <span>새 시나리오 생성</span>
+          </button>
+          <button @click="showScenarioList = false" class="action-button">
+            <span>닫기</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
 </template>
 
 <script setup lang="ts">
@@ -20,6 +192,9 @@ import { NaiSettingsSummary } from '@/types';
 import { ImageRepository } from '@/domain/scenario/ports/ImageRepository';
 import { NaiApiAdapter } from '@/adapters/NaiApiAdapter';
 import { ScenarioRepositoryImpl } from '@/adapters/repositories/ScenarioRepositoryImpl';
+import CutCard from './CutCard.vue';
+import PromptItemList from './PromptItemList.vue';
+import { v4 as uuidv4 } from 'uuid';
 
 
 
@@ -65,27 +240,28 @@ watch(cutImageGenerationStatus, (newStatus) => {
 }, { deep: true });
 
 // --- Methods ---
-
-// Toggle Cut List Visibility
-function toggleCutListVisibility() {
+// --- UI Toggles ---
+const toggleCutListVisibility = () => {
   showCutList.value = !showCutList.value;
-}
+};
 
-function toggleLeadingPromptPanel() {
+const toggleLeadingPromptPanel = () => {
   showLeadingPromptPanel.value = !showLeadingPromptPanel.value;
-}
+};
 
-function toggleTrailingPromptPanel() {
+const toggleTrailingPromptPanel = () => {
   showTrailingPromptPanel.value = !showTrailingPromptPanel.value;
-}
+};
 
 // 선행 프롬프트 관리
 function addLeadingPromptItem() {
+  console.log('[ScenarioEditor] addLeadingPromptItem 호출됨');
   if (!currentScenario.value) return;
-  if (!currentScenario.value.leadingPromptItems) {
-    currentScenario.value.leadingPromptItems = [];
-  }
   
+  // 기존 배열이 없으면 빈 배열 생성
+  const leadingPromptItems = currentScenario.value.leadingPromptItems || [];
+  
+  // 새 프롬프트 아이템 생성
   const newPromptItem: PromptItem = {
     id: uuidv4(),
     prompt: '',
@@ -94,7 +270,19 @@ function addLeadingPromptItem() {
     enabled: true
   };
   
-  currentScenario.value.leadingPromptItems.push(newPromptItem);
+  // 새 배열 생성 (불변성 유지)
+  const updatedItems = [...leadingPromptItems, newPromptItem];
+  
+  // currentScenario 업데이트
+  currentScenario.value = {
+    ...currentScenario.value,
+    leadingPromptItems: updatedItems
+  };
+  
+  console.log('[ScenarioEditor] 선행 프롬프트 아이템 추가됨:', newPromptItem);
+  console.log('[ScenarioEditor] 업데이트된 선행 프롬프트 아이템:', updatedItems);
+  
+  // 변경사항 저장
   handleSaveScenario();
 }
 
@@ -128,13 +316,21 @@ function updateLeadingPromptItem(index: number, field: 'prompt' | 'negativePromp
   handleSaveScenario();
 }
 
+// PromptItemList 컴포넌트에서 update-prompt 이벤트 처리
+function handleUpdateLeadingPrompt(payload: { index: number, field: 'prompt' | 'negativePrompt', value: string }) {
+  console.log('[ScenarioEditor] handleUpdateLeadingPrompt 호출됨:', payload);
+  updateLeadingPromptItem(payload.index, payload.field, payload.value);
+}
+
 // 후행 프롬프트 관리
 function addTrailingPromptItem() {
+  console.log('[ScenarioEditor] addTrailingPromptItem 호출됨');
   if (!currentScenario.value) return;
-  if (!currentScenario.value.trailingPromptItems) {
-    currentScenario.value.trailingPromptItems = [];
-  }
   
+  // 기존 배열이 없으면 빈 배열 생성
+  const trailingPromptItems = currentScenario.value.trailingPromptItems || [];
+  
+  // 새 프롬프트 아이템 생성
   const newPromptItem: PromptItem = {
     id: uuidv4(),
     prompt: '',
@@ -143,7 +339,19 @@ function addTrailingPromptItem() {
     enabled: true
   };
   
-  currentScenario.value.trailingPromptItems.push(newPromptItem);
+  // 새 배열 생성 (불변성 유지)
+  const updatedItems = [...trailingPromptItems, newPromptItem];
+  
+  // currentScenario 업데이트
+  currentScenario.value = {
+    ...currentScenario.value,
+    trailingPromptItems: updatedItems
+  };
+  
+  console.log('[ScenarioEditor] 후행 프롬프트 아이템 추가됨:', newPromptItem);
+  console.log('[ScenarioEditor] 업데이트된 후행 프롬프트 아이템:', updatedItems);
+  
+  // 변경사항 저장
   handleSaveScenario();
 }
 
@@ -175,6 +383,12 @@ function updateTrailingPromptItem(index: number, field: 'prompt' | 'negativeProm
   
   currentScenario.value.trailingPromptItems[index][field] = value;
   handleSaveScenario();
+}
+
+// PromptItemList 컴포넌트에서 update-prompt 이벤트 처리
+function handleUpdateTrailingPrompt(payload: { index: number, field: 'prompt' | 'negativePrompt', value: string }) {
+  console.log('[ScenarioEditor] handleUpdateTrailingPrompt 호출됨:', payload);
+  updateTrailingPromptItem(payload.index, payload.field, payload.value);
 }
 
 // Scenario Management
@@ -283,81 +497,251 @@ function handleAddCut() {
   });
 }
 
-function handleRemoveCut(index: number) {
+function handleRemoveCut(cutId: string) {
   if (!currentScenario.value) return;
-  currentScenario.value.cuts.splice(index, 1);
+  const index = currentScenario.value.cuts.findIndex(cut => cut.id === cutId);
+  if (index !== -1) {
+    currentScenario.value.cuts.splice(index, 1);
+  }
 }
 
 function handleUpdateCut(index: number, updatedCut: Cut) {
   if (currentScenario.value && currentScenario.value.cuts[index]) {
     console.log(`[ScenarioEditor] handleUpdateCut called for index ${index}. Updated cut data:`, JSON.parse(JSON.stringify(updatedCut)));
-    currentScenario.value.cuts[index] = { ...currentScenario.value.cuts[index], ...updatedCut };
-    currentScenario.value.updatedAt = new Date().toISOString();
+    
+    // 시나리오 복사
+    const updatedScenario = JSON.parse(JSON.stringify(currentScenario.value));
+    
+    // 컷 업데이트
+    updatedScenario.cuts[index] = updatedCut;
+    updatedScenario.updatedAt = new Date().toISOString();
+    
+    // 시나리오 갱신
+    currentScenario.value = updatedScenario;
+    
     console.log('[ScenarioEditor] currentScenario.value.cuts after update:', JSON.parse(JSON.stringify(currentScenario.value.cuts)));
+    
+    // 시나리오 저장
+    handleSaveScenario();
   } else {
     console.error(`[ScenarioEditor] handleUpdateCut: Cut not found at index ${index}`);
   }
 }
 
-// Image Generation
-async function handleGenerateImagesForCut(targetCut: Cut) {
+// 대표 이미지 선택 처리
+function handleSelectRepresentativeImage(payload: { cutId: string, imageUrl: string }) {
   if (!currentScenario.value) return;
-  const cut = findCut(targetCut.id);
-  if (!cut) return;
+  const { cutId, imageUrl } = payload;
+  const cutIndex = currentScenario.value.cuts.findIndex(cut => cut.id === cutId);
+  
+  if (cutIndex !== -1) {
+    currentScenario.value.cuts[cutIndex].representativeImage = imageUrl;
+    // 이미지 저장소에도 대표 이미지 정보 저장
+    scenarioUseCases.saveRepresentativeImage(cutId, imageUrl).catch(error => {
+      console.error('대표 이미지 저장 실패:', error);
+    });
+  }
+}
+
+// 해상도 업데이트 처리
+function handleResolutionUpdate(payload: any) {
+  if (!currentScenario.value) return;
+  const { cutId, resolutions } = payload;
+  const cutIndex = currentScenario.value.cuts.findIndex(cut => cut.id === cutId);
+  
+  if (cutIndex !== -1) {
+    currentScenario.value.cuts[cutIndex].selectedResolutions = resolutions;
+    console.log(`[ScenarioEditor] Resolution updated for cut ${cutId}:`, resolutions);
+  }
+}
+
+// 이미지 뷰어 열기 처리
+function handleViewImage(imageData: any) {
+  scenarioStore.setSelectedImage(imageData.url);
+  scenarioStore.setSelectedImageData(imageData);
+  console.log('[ScenarioEditor] View image:', imageData);
+}
+
+// Image Generation
+async function handleGenerateImagesForCut(cutData: Cut) {
+  if (!currentScenario.value) {
+    console.error('[ScenarioEditor] handleGenerateImagesForCut: currentScenario is null');
+    return;
+  }
+  
+  const cut = findCut(cutData.id);
+  if (!cut) {
+    console.error(`[ScenarioEditor] handleGenerateImagesForCut: Cut with id ${cutData.id} not found`);
+    return;
+  }
 
   console.log('[ScenarioEditor] Generating images for cut:', 
     JSON.parse(JSON.stringify(cut))); // 반응형 프록시를 일반 객체로 변환하여 로깅
   
-  // 메인 프롬프트 및 네거티브 프롬프트 추출 (첫 번째 활성화된 PromptItem 사용)
-  const mainPromptItem = cut.mainPromptItems?.find(item => item.enabled !== false) || cut.mainPromptItems?.[0];
-  const mainPrompt = mainPromptItem?.prompt || '';
-  const negativePrompt = mainPromptItem?.negativePrompt || '';
+  // 현재 시나리오에서 컷 인덱스 확인
+  const cutIndex = currentScenario.value.cuts.findIndex(c => c.id === cut.id);
+  if (cutIndex === -1) {
+    console.error(`[ScenarioEditor] handleGenerateImagesForCut: Cut with id ${cut.id} not found in current scenario`);
+    return;
+  }
   
-  console.log(`[ScenarioEditor] Main Prompt from PromptItems: ${mainPrompt}`);
-  console.log(`[ScenarioEditor] Negative Prompt from PromptItems: ${negativePrompt}`);
+  console.log(`[ScenarioEditor] Generating images for cut ${cut.id} at index ${cutIndex} in scenario ${currentScenario.value.id}`);
   
-  // 캡릭터 프롬프트 추출 (활성화된 캡릭터만 사용)
-  const activeCharacterPrompts = (cut.characterPrompts || [])
-    .filter(cp => cp.enabled !== false)
-    .map(cp => cp.prompt || '')
-    .filter(prompt => prompt); // 빈 문자열 제거
-  
-  console.log('[ScenarioEditor] Active Character Prompts:', activeCharacterPrompts);
-
-  cutImageGenerationStatus.value[cut.id] = true;
-  try {
-    // 선택된 해상도 가져오기 (첫 번째 활성화된 ResolutionSetting 사용)
-    const resolutionSetting = cut.selectedResolutions?.find(res => res.enabled !== false) || cut.selectedResolutions?.[0];
-    const width = resolutionSetting?.width || 1216; // 기본값 사용
-    const height = resolutionSetting?.height || 832; // 기본값 사용
-    console.log(`[이미지 생성] 선택된 해상도: ${width}x${height}`);
+  // 메인 프롬프트 추출
+  const mainPrompt = cut.mainPromptItems
+    ?.filter((item: any) => item.enabled !== false)
+    ?.map((item: any) => item.prompt)
+    ?.join(', ') || '';
     
-    // ScenarioUseCases.generateImagesForCut 호출
-    const newImages = await scenarioUseCases.generateImagesForCut(cut, currentScenario.value.id);
+  // 네거티브 프롬프트 추출
+  const negativePrompt = cut.negativePromptItems
+    ?.filter((item: any) => item.enabled !== false)
+    ?.map((item: any) => item.prompt)
+    ?.join(', ') || '';
 
-    const cutIndex = currentScenario.value.cuts.findIndex(c => c.id === cut.id);
-    if (cutIndex !== -1) {
-      currentScenario.value.cuts[cutIndex].generatedImages.push(...newImages);
+  // 선행/후행 프롬프트 추출
+  const leadingPrompts = currentScenario.value.leadingPromptItems
+    ?.filter(item => item.enabled !== false)
+    ?.map(item => item.prompt)
+    ?.join(', ') || '';
+  
+  const trailingPrompts = currentScenario.value.trailingPromptItems
+    ?.filter(item => item.enabled !== false)
+    ?.map(item => item.prompt)
+    ?.join(', ') || '';
+
+  // 선행/후행 네거티브 프롬프트 추출
+  const leadingNegativePrompts = currentScenario.value.leadingPromptItems
+    ?.filter(item => item.enabled !== false && item.negativePrompt)
+    ?.map(item => item.negativePrompt)
+    ?.join(', ') || '';
+  
+  const trailingNegativePrompts = currentScenario.value.trailingPromptItems
+    ?.filter(item => item.enabled !== false && item.negativePrompt)
+    ?.map(item => item.negativePrompt)
+    ?.join(', ') || '';
+
+  // 최종 프롬프트 구성
+  const finalPrompt = [leadingPrompts, mainPrompt, trailingPrompts]
+    .filter(Boolean)
+    .join(', ');
+  
+  const finalNegativePrompt = [leadingNegativePrompts, negativePrompt, trailingNegativePrompts]
+    .filter(Boolean)
+    .join(', ');
+
+  console.log(`[ScenarioEditor] Final Prompt: ${finalPrompt}`);
+  console.log(`[ScenarioEditor] Final Negative Prompt: ${finalNegativePrompt}`);
+
+  // 캐릭터 프롬프트 추출
+  const characterPrompts = cut.characterPrompts
+    ?.filter(cp => cp.enabled !== false)
+    ?.map(cp => cp.prompt) || [];
+
+  console.log(`[ScenarioEditor] Character Prompts: ${characterPrompts.join(' | ')}`);
+
+  // 이미지 생성 상태 초기화
+  cutImageGenerationStatus.value = { 
+    ...cutImageGenerationStatus.value, 
+    [cut.id]: true 
+  };
+
+  try {
+    // 이미지 생성 요청
+    const imageCount = cutData.imageCount || 1;
+    
+    // 해상도 정보 가져오기
+    const selectedResolution = cut.selectedResolutions?.[0];
+    const width = selectedResolution?.width || 512;
+    const height = selectedResolution?.height || 512;
+    
+    console.log(`[ScenarioEditor] Calling generateImagesForCut with scenarioId: ${currentScenario.value.id}, cutIndex: ${cutIndex}`);
+    
+    // 컷 정보를 저장하여 시나리오에 업데이트
+    await scenarioUseCases.saveScenario(currentScenario.value);
+    
+    const generatedImages = await scenarioUseCases.generateImagesForCut(
+      cut.id, 
+      finalPrompt, 
+      finalNegativePrompt,
+      characterPrompts,
+      imageCount,
+      width,
+      height,
+      cut.seed
+    );
+
+    // 생성된 이미지 처리
+    if (generatedImages && generatedImages.length > 0) {
+      // 생성된 이미지 데이터 업데이트
+      if (!cut.generatedImages) cut.generatedImages = [];
       
-      // 새로 생성된 이미지가 있으면
-      if (newImages.length > 0) {
-        // 대표 이미지가 없으면 첫 번째 이미지를 대표 이미지로 설정
-        if (!currentScenario.value.cuts[cutIndex].representativeImage) {
-          currentScenario.value.cuts[cutIndex].representativeImage = newImages[0].url;
-          // await scenarioUseCases.setRepresentativeImage(cut.id, newImages[0].url); // Persist if needed
-        }
-        
-        // 생성된 첫 번째 이미지를 이미지 뷰어에 표시
-        handleSelectImageForView(newImages[0]);
+      // 새로 생성된 이미지를 기존 이미지 배열에 추가
+      cut.generatedImages = [...cut.generatedImages, ...generatedImages];
+      
+      // 대표 이미지가 없으면 첫 번째 이미지를 대표로 설정
+      if (!cut.representativeImage && generatedImages[0]) {
+        cut.representativeImage = generatedImages[0].url;
+        // 이미지 저장소에도 대표 이미지 정보 저장
+        await scenarioUseCases.saveRepresentativeImage(cut.id, generatedImages[0].url);
       }
+      
+      // 생성된 첫 번째 이미지를 이미지 뷰어에 바로 보여주기
+      if (generatedImages[0]) {
+        handleViewImage(generatedImages[0]);
+      }
+
+      // 네거티브 프롬프트 히스토리 추가
+      if (finalNegativePrompt && !negativePromptHistory.value.includes(finalNegativePrompt)) {
+        negativePromptHistory.value.push(finalNegativePrompt);
+      }
+
+      console.log(`[ScenarioEditor] Generated ${generatedImages.length} images for cut ${cut.id}`);
+    } else {
+      console.warn(`[ScenarioEditor] No images were generated for cut ${cut.id}`);
     }
   } catch (error) {
-    console.error(`Error generating images for cut ${cut.id}:`, error);
+    console.error(`[ScenarioEditor] Error generating images for cut ${cut.id}:`, error);
+    console.error(`[ScenarioEditor] Raw error object:`, JSON.stringify(error, null, 2));
+    console.error(`[ScenarioEditor] Error constructor:`, error.constructor.name);
+    console.error(`[ScenarioEditor] Error prototype:`, Object.getPrototypeOf(error));
+    console.error(`[ScenarioEditor] Error properties:`, Object.getOwnPropertyNames(error));
+    
+    // 오류 상세 정보 출력
+    console.error(`[ScenarioEditor] Error details:`, {
+      message: error.message,
+      stack: error.stack,
+      name: error.name,
+      code: error.code,
+      cutId: cut.id,
+      prompt: finalPrompt,
+      negativePrompt: finalNegativePrompt,
+      characterPrompts: characterPrompts,
+      imageCount: imageCount,
+      width: width,
+      height: height
+    });
+    
+    // 생성 시도 정보 출력
+    console.error(`[ScenarioEditor] Generation attempt info:`, {
+      cutId: cut.id,
+      scenarioId: props.scenarioId,
+      cutIndex: props.cutIndex,
+      prompt: finalPrompt?.substring(0, 100) + '...',
+      negativePrompt: finalNegativePrompt?.substring(0, 100) + '...',
+      characterPromptsCount: characterPrompts?.length || 0,
+      imageCount: imageCount,
+      width: width,
+      height: height
+    });
   } finally {
-    cutImageGenerationStatus.value[cut.id] = false;
+    // 이미지 생성 상태 업데이트
+    cutImageGenerationStatus.value = { 
+      ...cutImageGenerationStatus.value, 
+      [cut.id]: false 
+    };
   }
 }
-
 // Character Prompt Management (delegated from CutCard)
 function findCut(cutId: string): Cut | undefined {
     return currentScenario.value.cuts.find(c => c.id === cutId);
@@ -645,5 +1029,448 @@ onMounted(async () => {
 </script>
 
 <style scoped>
-/* ... */
+.scenario-editor-container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow-y: auto;
+  padding: 1rem 0;
+  background-color: #f9f9f9;
+}
+
+.loading-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(255, 255, 255, 0.8);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  z-index: 10;
+}
+
+.loading-spinner {
+  border: 4px solid #f3f3f3;
+  border-top: 4px solid #3498db;
+  border-radius: 50%;
+  width: 40px;
+  height: 40px;
+  animation: spin 1s linear infinite;
+  margin-bottom: 1rem;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+.scenario-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+  padding: 0 1rem 1rem 1rem;
+  border-bottom: 1px solid #e0e0e0;
+}
+
+.scenario-title-container {
+  flex: 1;
+}
+
+.scenario-title-input {
+  width: 100%;
+  padding: 0.5rem;
+  font-size: 1.2rem;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+}
+
+.scenario-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.action-button {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem;
+  border: none;
+  border-radius: 4px;
+  background-color: #e0e0e0;
+  color: #333;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.action-button:hover {
+  background-color: #d0d0d0;
+}
+
+.action-button.primary {
+  background-color: #4CAF50;
+  color: white;
+}
+
+.action-button.primary:hover {
+  background-color: #45a049;
+}
+
+.global-prompt-panels {
+  margin: 0 0 1rem 0;
+}
+
+.prompt-panel {
+  margin-bottom: 1rem;
+  border: 1px solid #e0e0e0;
+  border-radius: 4px;
+  overflow: hidden;
+  padding: 0;
+}
+
+.panel-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.75rem 1rem;
+  background-color: #f0f0f0;
+  cursor: pointer;
+}
+
+.panel-header h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.toggle-icon {
+  transition: transform 0.2s;
+}
+
+.panel-content {
+  padding: 1rem 0;
+  background-color: #fff;
+}
+
+.prompt-item {
+  margin-bottom: 1rem;
+  padding: 1rem;
+  border: 1px solid #e0e0e0;
+  border-radius: 4px;
+  background-color: #f9f9f9;
+}
+
+.prompt-item.disabled {
+  opacity: 0.6;
+}
+
+.prompt-item-header {
+  margin-bottom: 0.5rem;
+}
+
+.prompt-item-controls {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.toggle-switch {
+  position: relative;
+  display: inline-block;
+  width: 40px;
+  height: 20px;
+}
+
+.toggle-switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.slider {
+  position: absolute;
+  cursor: pointer;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: #ccc;
+  transition: .4s;
+  border-radius: 20px;
+}
+
+.slider:before {
+  position: absolute;
+  content: "";
+  height: 16px;
+  width: 16px;
+  left: 2px;
+  bottom: 2px;
+  background-color: white;
+  transition: .4s;
+  border-radius: 50%;
+}
+
+input:checked + .slider {
+  background-color: #2196F3;
+}
+
+input:checked + .slider:before {
+  transform: translateX(20px);
+}
+
+.probability-control {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.probability-input {
+  width: 60px;
+  padding: 0.25rem;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+}
+
+.remove-button {
+  background-color: #f44336;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  padding: 0.25rem 0.5rem;
+  cursor: pointer;
+}
+
+.prompt-inputs {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.prompt-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.prompt-field label {
+  font-weight: bold;
+  font-size: 0.9rem;
+}
+
+.prompt-field textarea {
+  padding: 0.5rem;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  resize: vertical;
+}
+
+.add-prompt-button {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem;
+  background-color: #2196F3;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  margin-top: 0.5rem;
+}
+
+.add-prompt-button:hover {
+  background-color: #1e88e5;
+}
+
+.cuts-section {
+  margin: 0 0 1rem 0;
+}
+
+.cuts-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.75rem 1rem;
+  background-color: #f0f0f0;
+  border-radius: 4px;
+  cursor: pointer;
+  margin-bottom: 0.5rem;
+}
+
+.cuts-header h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.cuts-container {
+  margin-top: 0.5rem;
+}
+
+.no-cuts-message {
+  padding: 2rem;
+  text-align: center;
+  background-color: #f0f0f0;
+  border-radius: 4px;
+}
+
+.cuts-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.add-cut-button {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem;
+  background-color: #FF9800;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  margin-top: 1rem;
+}
+
+.add-cut-button:hover {
+  background-color: #fb8c00;
+}
+
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(0, 0, 0, 0.5);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+}
+
+.modal-content {
+  width: 80%;
+  max-width: 600px;
+  background-color: #fff;
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+}
+
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1rem;
+  background-color: #f0f0f0;
+  border-bottom: 1px solid #e0e0e0;
+}
+
+.modal-header h2 {
+  margin: 0;
+  font-size: 1.2rem;
+}
+
+.close-button {
+  background: none;
+  border: none;
+  font-size: 1.2rem;
+  cursor: pointer;
+  color: #666;
+}
+
+.modal-body {
+  padding: 1rem;
+  max-height: 60vh;
+  overflow-y: auto;
+}
+
+.no-scenarios-message {
+  padding: 2rem;
+  text-align: center;
+}
+
+.scenario-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.scenario-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.75rem;
+  border: 1px solid #e0e0e0;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.scenario-item:hover {
+  background-color: #f5f5f5;
+}
+
+.scenario-item.active {
+  background-color: #e3f2fd;
+  border-color: #2196F3;
+}
+
+.scenario-item-info {
+  flex: 1;
+}
+
+.scenario-item-info h3 {
+  margin: 0 0 0.25rem 0;
+  font-size: 1rem;
+}
+
+.scenario-item-info p {
+  margin: 0;
+  font-size: 0.8rem;
+  color: #666;
+}
+
+.delete-button {
+  background-color: #f44336;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  padding: 0.25rem 0.5rem;
+  cursor: pointer;
+}
+
+.modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  padding: 1rem;
+  background-color: #f0f0f0;
+  border-top: 1px solid #e0e0e0;
+}
+
+
+
+/* 반응형 스타일 */
+@media (max-width: 768px) {
+  .scenario-header {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.5rem;
+  }
+  
+  .scenario-actions {
+    justify-content: space-between;
+  }
+  
+  .action-button span {
+    display: none;
+  }
+  
+  .modal-content {
+    width: 95%;
+  }
+}
 </style>

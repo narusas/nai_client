@@ -47,6 +47,15 @@ export class ScenarioUseCases {
   async deleteScenario(id: string): Promise<void> {
     await this.scenarioRepository.deleteScenario(id);
   }
+  
+  /**
+   * 특정 컷의 대표 이미지 URL을 저장
+   * @param cutId 대표 이미지를 설정할 컷 ID
+   * @param imageUrl 대표 이미지 URL
+   */
+  async saveRepresentativeImage(cutId: string, imageUrl: string): Promise<void> {
+    await this.imageRepository.saveRepresentativeImage(cutId, imageUrl);
+  }
 
   // 새로운 메소드: 컷의 특정 해상도 확률 업데이트
   async updateCutResolutionProbability(
@@ -280,74 +289,100 @@ export class ScenarioUseCases {
   /**
    * 컷 데이터를 기반으로 이미지 생성
    * 컷에서 프롬프트, 해상도, 시드 등의 정보를 추출하여 이미지 생성
-   * @param cut 이미지를 생성할 컷 객체
-   * @param scenarioId 이미지가 속한 시나리오 ID
+   * @param cutId 컷 ID
+   * @param prompt 주요 프롬프트
+   * @param negativePrompt 네거티브 프롬프트
+   * @param characterPrompts 캐릭터 프롬프트 배열
+   * @param imageCount 생성할 이미지 수
+   * @param width 이미지 너비
+   * @param height 이미지 높이
    * @returns 생성된 이미지 데이터 목록
    */
-  async generateImagesForCut(cut: Cut, scenarioId: string): Promise<ImageData[]> {
-    console.log(`[ScenarioUseCases] generateImagesForCut - Received scenarioId: ${scenarioId}, cutId: ${cut ? cut.id : 'cut is null'}`);
-    console.log(`[ScenarioUseCases] generateImagesForCut - Full cut object:`, JSON.stringify(cut, null, 2));
-    if (cut) {
-      console.log(`[ScenarioUseCases] generateImagesForCut - cut.mainPromptItems object:`, JSON.stringify(cut.mainPromptItems, null, 2));
+  async generateImagesForCut(
+    cutId: string,
+    prompt: string,
+    negativePrompt: string,
+    characterPrompts: string[],
+    imageCount: number = 1,
+    width: number = 512,
+    height: number = 512,
+    seed?: number
+  ): Promise<ImageData[]> {
+    try {
+      console.log(`[ScenarioUseCases] generateImagesForCut - cutId: ${cutId}`);
+      console.log(`[ScenarioUseCases] prompt: ${prompt}`);
+      console.log(`[ScenarioUseCases] negativePrompt: ${negativePrompt}`);
+      console.log(`[ScenarioUseCases] characterPrompts: ${JSON.stringify(characterPrompts)}`);
+      console.log(`[ScenarioUseCases] imageCount: ${imageCount}, width: ${width}, height: ${height}, seed: ${seed}`);
+
+      if (!cutId || !prompt) {
+        throw new Error('cutId 또는 prompt가 유효하지 않습니다.');
+      }
+
+      // 시나리오 ID를 찾기 위해 모든 시나리오를 검색
+      const scenarios = await this.getAllScenarios();
+      let scenarioId = '';
+      let cutIndex = -1;
+
+      // 모든 시나리오에서 cutId를 가진 컷 찾기
+      for (const scenario of scenarios) {
+        const index = scenario.cuts.findIndex(c => c.id === cutId);
+        if (index !== -1) {
+          scenarioId = scenario.id;
+          cutIndex = index;
+          break;
+        }
+      }
+
+      if (!scenarioId || cutIndex === -1) {
+        throw new Error(`Cut with id ${cutId} not found in any scenario`);
+      }
+
+      console.log(`[ScenarioUseCases] Found scenario: ${scenarioId}, cutIndex: ${cutIndex}`);
+      
+      // 이미지 생성 시도
+      console.log(`[ScenarioUseCases] Attempting to generate images with parameters:`);
+      console.log(`  Prompt: ${prompt.substring(0, 100)}...`);
+      console.log(`  Negative Prompt: ${negativePrompt?.substring(0, 100) || 'none'}...`);
+      console.log(`  Character Prompts: ${characterPrompts?.length || 0} items`);
+      console.log(`  Image Count: ${imageCount}`);
+      console.log(`  Dimensions: ${width}x${height}`);
+      console.log(`  Seed: ${seed || 'random'}`);
+      
+      const generatedImages = await this.generateImages(
+        prompt,
+        negativePrompt,
+        characterPrompts,
+        imageCount,
+        width,
+        height,
+        seed,
+        {},
+        scenarioId,
+        cutIndex
+      );
+      
+      console.log(`[ScenarioUseCases] Successfully generated ${generatedImages.length} images`);
+      return generatedImages;
+    } catch (error) {
+      console.error(`[ScenarioUseCases] Error in generateImagesForCut:`, error);
+      console.error(`[ScenarioUseCases] Error details:`, {
+        message: error.message,
+        name: error.name,
+        stack: error.stack,
+        cutId,
+        prompt: prompt?.substring(0, 100) + '...',
+        negativePrompt: negativePrompt?.substring(0, 100) + '...',
+        characterPromptsCount: characterPrompts?.length || 0,
+        imageCount,
+        width,
+        height,
+        seed
+      });
+      
+      // 오류를 다시 던져서 상위 코드에서 처리할 수 있도록 함
+      throw new Error(`이미지 생성 중 오류 발생: ${error.message}`);
     }
-
-    if (!cut || !cut.mainPromptItems) {
-      throw new Error('Cut 또는 mainPromptItems가 유효하지 않습니다.');
-    }
-
-    const scenario = await this.getScenarioById(scenarioId); // 수정된 코드
-    if (!scenario) {
-      throw new Error(`Scenario with id ${scenarioId} not found`);
-    }
-
-    const cutIndex = scenario.cuts.findIndex(c => c.id === cut.id);
-    if (cutIndex === -1) {
-      throw new Error(`Cut with id ${cut.id} not found in scenario ${scenarioId}`);
-    }
-
-    // 컷에서 메인 프롬프트, 네거티브 프롬프트, 캐릭터 프롬프트 정보 추출
-    const mainPromptItem = cut.mainPromptItems?.find(item => item.enabled !== false) || cut.mainPromptItems?.[0];
-    const mainPromptText = mainPromptItem?.prompt || '';
-    const negativePrompt = mainPromptItem?.negativePrompt || '';
-    
-    console.log(`[ScenarioUseCases] Extracted Main Prompt from mainPromptItems: ${mainPromptText}`);
-    console.log(`[ScenarioUseCases] Extracted Negative Prompt from mainPromptItems: ${negativePrompt}`);
-
-    const characterPromptStrings = (cut.characterPrompts || []) // characterPrompts -> characterPromptStrings 변수명 변경
-      .filter(cp => cp.enabled)
-      .map(cp => {
-        // PromptItem 배열에서 실제 프롬프트 문자열 추출
-        // 여기서는 첫번째 enabled된 PromptItem의 prompt를 사용하거나, 없으면 빈 문자열 반환
-        const activePromptItem = cp.promptItems.find(pi => pi.enabled);
-        return activePromptItem ? activePromptItem.prompt : '';
-      })
-      .filter(prompt => prompt.length > 0); // 빈 문자열 프롬프트는 제외
-    
-    console.log(`[ScenarioUseCases] Extracted Character Prompts: ${JSON.stringify(characterPromptStrings)}`);
-
-    const selectedResolutionItem = cut.selectedResolutions?.find(res => res.enabled);
-    const width = selectedResolutionItem?.width || 1024; // 기본값 또는 오류 처리 필요
-    const height = selectedResolutionItem?.height || 1024; // 기본값 또는 오류 처리 필요
-
-    const imageCount = cut.imageCount || 1;
-
-    const generatedImages = await this.generateImages(
-      mainPromptText,
-      negativePrompt,
-      characterPromptStrings, // 수정된 변수명 사용
-      imageCount,
-      width,
-      height,
-      cut.seed, // 시드 값 전달
-      {
-        // 여기에 Cut의 다른 imageGenerationSettings를 전달할 수 있습니다.
-        // 예: sampler, steps 등
-        ...(cut.imageGenerationSettings || {})
-      },
-      scenarioId,
-      cutIndex // cut.id 대신 cutIndex 전달
-    );
-    return generatedImages;
   }
 
   /**

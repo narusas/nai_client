@@ -18,7 +18,6 @@ import { fas } from '@fortawesome/free-solid-svg-icons' // 전체 solid 아이�
 
 import './assets/main.css'
 
-import { createPinia } from 'pinia'
 import router from './router' // Vue Router
 
 config.autoAddCss = true; // FontAwesome CSS 자동 추가 기능 활성화 (기본값이지만 명시)

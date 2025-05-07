@@ -191,13 +191,13 @@ const toggleFullscreenEditor = () => {
   
   // 전체화면 모드일 때 이미지 뷰어 감추기
   if (isFullscreenEditor.value) {
-    // 이미지 뷰어 상태를 임시 저장
-    previousImageViewerState = showImageViewer.value;
-    // 이미지 뷰어 감추기
-    showImageViewer.value = false;
+    // 이미지 뷰어 상태를 임시 저장 (isMobile 값으로 제어)
+    previousImageViewerState = !isMobile.value;
+    // 이미지 뷰어 감추기 (isMobile을 true로 설정하여 showImageViewer가 false가 되도록 함)
+    isMobile.value = true;
   } else {
     // 전체화면 모드가 아닐 때 이미지 뷰어 상태 복원
-    showImageViewer.value = previousImageViewerState;
+    isMobile.value = !previousImageViewerState;
   }
 };
 

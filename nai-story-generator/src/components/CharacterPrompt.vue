@@ -1,12 +1,40 @@
 <template>
   <div class="character-prompt">
     <div class="char-prompt-header">
-      <input 
-        type="text" 
-        v-model="charPrompt.name" 
-        placeholder="캐릭터 이름"
-        class="character-name-input"
-      />
+      <div class="name-and-position">
+        <input 
+          type="text" 
+          v-model="charPrompt.name" 
+          placeholder="캐릭터 이름"
+          class="character-name-input"
+        />
+        
+        <!-- 위치 입력 필드를 이름 옵에 배치 -->
+        <div class="position-section">
+          <label>위치 (x, y)</label>
+          <div class="position-inputs">
+            <input 
+              type="number" 
+              v-model.number="charPrompt.position.x" 
+              min="0" 
+              max="1" 
+              step="0.1"
+              placeholder="X (0-1)"
+              @change="updatePosition('x', $event.target.value)"
+            />
+            <input 
+              type="number" 
+              v-model.number="charPrompt.position.y" 
+              min="0" 
+              max="1" 
+              step="0.1"
+              placeholder="Y (0-1)"
+              @change="updatePosition('y', $event.target.value)"
+            />
+          </div>
+        </div>
+      </div>
+      
       <div class="character-controls">
         <div class="order-controls">
           <button 
@@ -42,29 +70,7 @@
       add-button-text=""
     >
       <template #additional-fields="{ item, index }">
-        <div class="position-section">
-          <label>위치 (x, y)</label>
-          <div class="position-inputs">
-            <input 
-              type="number" 
-              v-model.number="charPrompt.position.x" 
-              min="0" 
-              max="1" 
-              step="0.1"
-              placeholder="X (0-1)"
-              @change="updatePosition('x', $event.target.value)"
-            />
-            <input 
-              type="number" 
-              v-model.number="charPrompt.position.y" 
-              min="0" 
-              max="1" 
-              step="0.1"
-              placeholder="Y (0-1)"
-              @change="updatePosition('y', $event.target.value)"
-            />
-          </div>
-        </div>
+        <!-- 위치 입력 필드는 이미 헤더에 추가했으므로 여기서는 제거 -->
       </template>
     </PromptItemList>
   </div>
@@ -150,15 +156,30 @@ function updatePosition(axis: 'x' | 'y', value: string) {
   margin-bottom: 0.8rem;
   border: 1px solid #eee;
   border-radius: 4px;
-  padding: 0.8rem;
+  padding: 0.8rem 0;
   background-color: #f9f9f9;
 }
 
 .char-prompt-header {
   display: flex;
   justify-content: space-between;
-  align-items: center;
-  margin-bottom: 0.8rem;
+  align-items: flex-start;
+  margin-bottom: 0.5rem;
+  padding: 0 0.8rem;
+}
+
+.name-and-position {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  flex: 1;
+}
+
+@media (min-width: 768px) {
+  .name-and-position {
+    flex-direction: row;
+    align-items: center;
+  }
 }
 
 .character-name-input {

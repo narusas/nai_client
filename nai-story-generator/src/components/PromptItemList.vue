@@ -1,64 +1,72 @@
 <template>
   <div class="prompt-items-list">
     <div v-for="(promptItem, index) in modelValue" :key="promptItem.id || index" class="prompt-item">
-      <div class="prompt-item-header">
-        <div class="prompt-item-controls">
-          <v-switch
-            :model-value="promptItem.enabled !== false"
-            @update:model-value="togglePromptItemEnabled(index, $event)"
-            density="compact"
-            hide-details
-            color="primary"
-            class="enabled-switch"
-          ></v-switch>
-          <input 
-            type="number" 
-            :value="promptItem.probability" 
-            min="0" 
-            max="100" 
-            @change="updatePromptItemProbability(index, Number(($event.target as HTMLInputElement).value))"
-            class="probability-input"
-            :disabled="promptItem.enabled === false"
-          />
-          <span class="probability-label">%</span>
-        </div>
-        <button class="remove-btn-round" @click="removePromptItem(index)">
-          <font-awesome-icon :icon="['fas', 'times']" />
-        </button>
-      </div>
+      <!-- 삭제 버튼을 탭 헤더로 이동했으므로 헤더 자체는 삭제 -->
+      <!-- <div class="prompt-item-header"></div> -->
       <div class="prompt-item-content">
         <div class="prompt-tabs">
-          <div class="tab-buttons">
-            <button 
-              class="tab-button" 
-              :class="{ 'active': activeTab[promptItem.id || index] === 'prompt' || !activeTab[promptItem.id || index] }"
-              @click="setActiveTab(promptItem.id || index, 'prompt')"
-            >
-              프롬프트
-            </button>
-            <button 
-              class="tab-button" 
-              :class="{ 'active': activeTab[promptItem.id || index] === 'negative' }"
-              @click="setActiveTab(promptItem.id || index, 'negative')"
-            >
-              네거티브 프롬프트
-            </button>
+          <div class="tab-header">
+            <div class="tab-buttons">
+              <button 
+                class="tab-button" 
+                :class="{ 'active': activeTab[promptItem.id || index] === 'prompt' || !activeTab[promptItem.id || index] }"
+                @click="setActiveTab(promptItem.id || index, 'prompt')"
+              >
+                프롬프트
+              </button>
+              <button 
+                class="tab-button" 
+                :class="{ 'active': activeTab[promptItem.id || index] === 'negative' }"
+                @click="setActiveTab(promptItem.id || index, 'negative')"
+              >
+                네거티브
+              </button>
+            </div>
+            
+            <div class="tab-controls">
+              <!-- 활성화와 확률 컨트롤 -->
+              <div class="prompt-item-controls">
+                <v-switch
+                  :model-value="promptItem.enabled !== false"
+                  @update:model-value="togglePromptItemEnabled(index, $event)"
+                  density="compact"
+                  hide-details
+                  color="primary"
+                  class="enabled-switch"
+                ></v-switch>
+                <input 
+                  type="number" 
+                  :value="promptItem.probability" 
+                  min="0" 
+                  max="100" 
+                  @change="updatePromptItemProbability(index, Number(($event.target as HTMLInputElement).value))"
+                  class="probability-input"
+                  :disabled="promptItem.enabled === false"
+                />
+                <span class="probability-label">%</span>
+              </div>
+              
+              <!-- 삭제 버튼 -->
+              <button class="remove-btn-round" @click="removePromptItem(index)">
+                <font-awesome-icon :icon="['fas', 'times']" />
+              </button>
+            </div>
           </div>
           
           <div class="tab-content">
             <div v-if="activeTab[promptItem.id || index] !== 'negative'" class="prompt-textarea-container">
               <textarea 
-                v-model="promptItem.prompt" 
+                :value="promptItem.prompt" 
                 class="prompt-textarea"
-                @change="updatePromptItem(index, 'prompt', $event.target.value)"
+                @input="updatePromptItem(index, 'prompt', $event.target.value)"
                 placeholder="프롬프트를 입력하세요"
               ></textarea>
             </div>
             <div v-if="activeTab[promptItem.id || index] === 'negative'" class="prompt-textarea-container">
               <textarea 
-                v-model="promptItem.negativePrompt" 
+                :value="promptItem.negativePrompt" 
                 class="prompt-textarea"
-                @change="updatePromptItem(index, 'negativePrompt', $event.target.value)"
+                @input="updatePromptItem(index, 'negativePrompt', $event.target.value)"
                 placeholder="네거티브 프롬프트를 입력하세요"
               ></textarea>
             </div>
@@ -76,15 +84,22 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue';
+import { ref, PropType } from 'vue';
 import { FontAwesomeIcon } from '@fortawesome/vue-fontawesome';
 import { VSwitch } from 'vuetify/components';
 import { PromptItem } from '@/domain/scenario/entities/PromptItem';
 
-const props = defineProps<{
-  modelValue: PromptItem[];
-  addButtonText: string;
-}>();
+const props = defineProps({
+  modelValue: {
+    type: Array as PropType<PromptItem[]>,
+    required: true,
+    default: () => []
+  },
+  addButtonText: {
+    type: String,
+    default: '추가'
+  }
+});
 
 const emit = defineEmits([
   'update:modelValue',
@@ -104,7 +119,52 @@ function setActiveTab(itemId: string | number, tab: 'prompt' | 'negative') {
 
 // 프롬프트 아이템 추가
 function addPromptItem() {
-  emit('add-prompt-item');
+  console.log('[PromptItemList] addPromptItem 호출됨');
+  console.log('[PromptItemList] 현재 modelValue:', props.modelValue);
+  
+  try {
+    // 새 프롬프트 아이템 생성
+    const newPromptItem: PromptItem = {
+      id: crypto.randomUUID(),
+      prompt: '',
+      negativePrompt: '',
+      probability: 100,
+      enabled: true
+    };
+    
+    // 기존 배열을 확인하고 복사
+    const currentItems: PromptItem[] = [];
+    
+    // 기존 배열이 있으면 각 요소를 깊은 복사
+    if (props.modelValue && Array.isArray(props.modelValue)) {
+      props.modelValue.forEach(item => {
+        if (item) {
+          currentItems.push({
+            id: item.id || crypto.randomUUID(),
+            prompt: item.prompt || '',
+            negativePrompt: item.negativePrompt || '',
+            probability: typeof item.probability === 'number' ? item.probability : 100,
+            enabled: item.enabled !== false
+          });
+        }
+      });
+    }
+    
+    // 새 아이템 추가
+    currentItems.push(newPromptItem);
+    
+    console.log('[PromptItemList] 새 프롬프트 아이템 추가:', newPromptItem);
+    console.log('[PromptItemList] 업데이트된 배열 (길이: ' + currentItems.length + '):', currentItems);
+    
+    // v-model 업데이트
+    emit('update:modelValue', currentItems);
+    
+    // 기존 이벤트도 발생
+    emit('add-prompt-item');
+    console.log('[PromptItemList] add-prompt-item 이벤트 발생됨');
+  } catch (error) {
+    console.error('[PromptItemList] addPromptItem 오류 발생:', error);
+  }
 }
 
 // 프롬프트 아이템 삭제
@@ -124,7 +184,46 @@ function updatePromptItemProbability(index: number, probability: number) {
 
 // 프롬프트 아이템 내용 업데이트
 function updatePromptItem(index: number, field: 'prompt' | 'negativePrompt', value: string) {
-  emit('update-prompt', { index, field, value });
+  console.log(`[PromptItemList] updatePromptItem 호출됨 - index: ${index}, field: ${field}, value: ${value}`);
+  
+  try {
+    // 기존 배열을 확인하고 깊은 복사 수행
+    const currentItems: PromptItem[] = [];
+    
+    // 기존 배열이 있으면 각 요소를 깊은 복사
+    if (props.modelValue && Array.isArray(props.modelValue)) {
+      props.modelValue.forEach(item => {
+        if (item) {
+          currentItems.push({
+            id: item.id || crypto.randomUUID(),
+            prompt: item.prompt || '',
+            negativePrompt: item.negativePrompt || '',
+            probability: typeof item.probability === 'number' ? item.probability : 100,
+            enabled: item.enabled !== false
+          });
+        }
+      });
+    }
+    
+    // 해당 아이템이 있는지 확인
+    if (index >= 0 && index < currentItems.length) {
+      // 필드 업데이트
+      currentItems[index][field] = value;
+      
+      console.log(`[PromptItemList] 업데이트된 아이템:`, currentItems[index]);
+      console.log(`[PromptItemList] 업데이트된 배열 (길이: ${currentItems.length}):`, currentItems);
+      
+      // v-model 업데이트
+      emit('update:modelValue', currentItems);
+    } else {
+      console.warn(`[PromptItemList] 유효하지 않은 인덱스: ${index}, 배열 길이: ${currentItems.length}`);
+    }
+    
+    // 기존 이벤트도 발생
+    emit('update-prompt', { index, field, value });
+  } catch (error) {
+    console.error('[PromptItemList] updatePromptItem 오류 발생:', error);
+  }
 }
 </script>
 
@@ -133,6 +232,7 @@ function updatePromptItem(index: number, field: 'prompt' | 'negativePrompt', val
   display: flex;
   flex-direction: column;
   gap: 15px;
+  padding: 0;
 }
 
 .prompt-item {
@@ -157,7 +257,7 @@ function updatePromptItem(index: number, field: 'prompt' | 'negativePrompt', val
 }
 
 .prompt-item-content {
-  padding: 12px;
+  padding: 12px 0;
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -170,10 +270,22 @@ function updatePromptItem(index: number, field: 'prompt' | 'negativePrompt', val
   width: 100%;
 }
 
-.tab-buttons {
+.tab-header {
   display: flex;
+  justify-content: space-between;
+  align-items: center;
   border-bottom: 1px solid #ddd;
   margin-bottom: 10px;
+}
+
+.tab-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.tab-buttons {
+  display: flex;
 }
 
 .tab-button {

@@ -589,20 +589,21 @@ export function useNaiApiService() {
     }
 
     try {
-      // 요청 데이터 로깅 강화
-      console.log('이미지 생성 요청 시작:', {
-        prompt,
-        model: baseSettings.model,
-        count
-      });
-      
-      // 전체 요청 데이터 로깅 (디버깅용)
-      console.log('전체 API 요청 데이터:', JSON.stringify(requestData, null, 2));
-      
-      const apiUrl = baseSettings.apiUrl || 'https://image.novelai.net/ai/generate-image';
-      
-      // API 호출 및 응답 파싱
-      const images = await _callNaiApiAndParseResponse(apiUrl, requestData, token);
+    // 요청 데이터 로깅 강화
+    console.log('이미지 생성 요청 시작:', {
+      prompt,
+      model: baseSettings.model,
+      count
+    });
+    
+    // 전체 요청 데이터 로깅 (디버깅용)
+    console.log('전체 API 요청 데이터:', JSON.stringify(requestData, null, 2));
+    
+    const apiUrl = baseSettings.apiUrl || 'https://image.novelai.net/ai/generate-image';
+    
+    // API 호출 및 응답 파싱
+    console.log('이미지 생성 API 호출 시작:', apiUrl);
+    const images = await _callNaiApiAndParseResponse(apiUrl, requestData, token);
       
       if (images.length > 0) {
         await saveImagesToServer(images, prompt);
@@ -612,11 +613,12 @@ export function useNaiApiService() {
           const shortScenarioId = scenarioId.substring(0, 10);
           const formattedCutIndex = cutIndex.toString().padStart(2, '0');
           const timestamp = getCurrentTimestamp();
-          // 여러 이미지 생성 시 파일명 중복을 피하기 위해 이미지 순번(i+1) 추가 (요청에는 없었지만 권장)
-          const filename = `nai_${shortScenarioId}_${formattedCutIndex}_${timestamp}_${i + 1}.png`;
-          // 요청대로라면 const filename = `nai_${shortScenarioId}_${formattedCutIndex}_${timestamp}.png`;
-          console.log(`[naiApiService.generateImages] Preparing to download image as: ${filename}`);
-          await downloadImageViaBrowser(images[0], filename);
+          // 이미지 순번 추가
+          for (let i = 0; i < images.length; i++) {
+            const filename = `nai_${shortScenarioId}_${formattedCutIndex}_${timestamp}_${i + 1}.png`;
+            console.log(`[naiApiService.generateImages] Preparing to download image as: ${filename}`);
+            await downloadImageViaBrowser(images[i], filename);
+          }
         } else {
           console.warn('[naiApiService.generateImages] scenarioId 또는 cutIndex가 제공되지 않아 이미지 다운로드를 건너뜁니다.');
         }
@@ -627,9 +629,32 @@ export function useNaiApiService() {
       return images;
     } catch (error: any) {
       console.error('NAI API 호출 중 오류 발생:', error);
+      console.error('오류 상세 정보:', {
+        name: error.name,
+        message: error.message,
+        stack: error.stack,
+        code: error.code,
+        request: error.request ? {
+          method: error.request.method,
+          url: error.request.url,
+          headers: error.request.headers,
+        } : 'No request data',
+        response: error.response ? {
+          status: error.response.status,
+          statusText: error.response.statusText,
+          headers: error.response.headers,
+          data: error.response.data,
+        } : 'No response data',
+        config: error.config ? {
+          url: error.config.url,
+          method: error.config.method,
+          headers: error.config.headers,
+          data: error.config.data,
+        } : 'No config data'
+      });
       
       if (error.response) {
-        throw new Error(`API 오류: ${error.response.status} - ${error.response.data.message || '알 수 없는 오류'}`);
+        throw new Error(`API 오류: ${error.response.status} - ${error.response.data?.message || JSON.stringify(error.response.data) || '알 수 없는 오류'}`);
       } else if (error.request) {
         throw new Error('서버 응답이 없습니다. 네트워크 연결을 확인하세요.');
       } else {

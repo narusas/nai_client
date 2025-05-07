@@ -332,6 +332,31 @@ export const useScenarioStore = defineStore('scenario', {
       }
       return '';
     },
+    
+    getSelectedImage(): string | null {
+      return this.selectedImage;
+    },
+    
+    setSelectedImage(imageUrl: string | null) {
+      this.selectedImage = imageUrl;
+    },
+    
+    getSelectedImageData(): any | null {
+      return this.selectedImageData;
+    },
+    
+    setSelectedImageData(imageData: any | null) {
+      this.selectedImageData = imageData;
+    },
+    
+    clearSelectedImage() {
+      this.selectedImage = null;
+      this.selectedImageData = null;
+    },
+    
+    setAnyImageGenerating(isGenerating: boolean) {
+      this.isAnyImageGenerating = isGenerating;
+    },
   },
   getters: {
     currentScenario(state): Scenario | undefined {

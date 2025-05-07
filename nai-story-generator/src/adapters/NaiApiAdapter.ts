@@ -1,6 +1,7 @@
 import { ImageGenerationService } from '../domain/scenario/ports/ImageGenerationService';
 import { ImageData } from '../domain/scenario/entities'; 
 import { useNaiApiService } from '../services/naiApiService';
+import { saveGeneratedImage } from '../services/imageDbService';
 import { v4 as uuidv4 } from 'uuid';
 
 export class NaiApiAdapter implements ImageGenerationService {
