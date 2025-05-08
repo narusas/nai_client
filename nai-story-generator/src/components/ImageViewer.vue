@@ -157,7 +157,7 @@ function loadCurrentCutImages(selectedImageData: any) {
 let previousImage = null;
 
 watch(() => scenarioStore.getSelectedImage(), (newImage) => {
-  console.log('이미지 선택 변경 감지:', newImage);
+  console.log('이미지 선택 변경 감지:' );
   
   // 동일한 이미지로 재설정되는 경우 무시 (깨빡임 방지)
   if (newImage === previousImage && newImage === currentImage.value) {
@@ -168,7 +168,7 @@ watch(() => scenarioStore.getSelectedImage(), (newImage) => {
   previousImage = newImage;
   
   if (newImage) {
-    console.log('새 이미지 선택됨:', newImage);
+    console.log('새 이미지 선택됨:' );
     currentImage.value = newImage;
     showDownloadButton.value = false; // 새 이미지 선택 시 일단 다운로드 버튼 숨김
     

@@ -202,7 +202,7 @@ const imageRepository: ImageRepository = {
     // 이미지 저장 로직 구현
   },
   async saveRepresentativeImage(cutId: string, imageUrl: string): Promise<void> {
-    console.log('ImageRepository: saveRepresentativeImage called', cutId, imageUrl);
+    console.log('ImageRepository: saveRepresentativeImage called', cutId);
     await saveRepresentativeImage(cutId, imageUrl, currentScenario.value?.id || '');
   },
   async saveGeneratedImage(imageId: string, imageUrl: string, scenarioId: string, cutId: string): Promise<void> {
@@ -552,10 +552,20 @@ function handleResolutionUpdate(payload: any) {
 }
 
 // 이미지 뷰어 열기 처리
-function handleViewImage(imageData: any) {
-  scenarioStore.setSelectedImage(imageData.url);
-  scenarioStore.setSelectedImageData(imageData);
-  console.log('[ScenarioEditor] View image:', imageData);
+function handleViewImage(payload: any) {
+  console.log('[ScenarioEditor] View image:', payload);
+  // payload 구조 확인 및 처리
+  if (payload && payload.imageData) {
+    // 이미지 데이터가 payload.imageData에 있는 경우 (CutCard에서 전달된 구조)
+    scenarioStore.setSelectedImage(payload.imageData.url);
+    scenarioStore.setSelectedImageData(payload.imageData);
+  } else if (payload && payload.url) {
+    // 직접 이미지 데이터가 전달된 경우
+    scenarioStore.setSelectedImage(payload.url);
+    scenarioStore.setSelectedImageData(payload);
+  } else {
+    console.error('[ScenarioEditor] Invalid image data structure:', payload);
+  }
 }
 
 // Image Generation

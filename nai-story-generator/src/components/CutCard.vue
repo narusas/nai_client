@@ -397,6 +397,7 @@ const selectRepresentativeImage = (imageUrl: string) => {
 const handleThumbnailClick = (imageData: any) => {
   // 클릭 시에는 이미지 뷰어만 열기
   console.log('이미지 클릭:', imageData);
+  // 부모 컴포넌트에 이미지 데이터 전달
   emit('view-image', {
     imageData,
     cutId: props.cutData.id,
@@ -420,8 +421,12 @@ const handleRepresentativeImagePreviewClick = () => {
       seed: null
     };
     
-    // 시나리오 스토어에 이미지 선택 정보 전달
-    emit('view-image', imageData);
+    // 부모 컴포넌트에 이미지 데이터 전달 - 구조 통일
+    emit('view-image', {
+      imageData,
+      cutId: props.cutData.id,
+      allImages: props.cutData.generatedImages || []
+    });
   }
 };
 
