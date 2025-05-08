@@ -356,25 +356,11 @@ function handleUpdateTrailingPrompt(payload: { index: number, field: 'prompt' | 
 // Scenario Management
 async function handleNewScenario() {
   currentScenario.value = scenarioUseCases.createNewScenario();
-  // 기본 선행/후행 프롬프트 초기화
-  if (!currentScenario.value.leadingPromptItems) {
-    currentScenario.value.leadingPromptItems = [];
-  }
-  if (!currentScenario.value.trailingPromptItems) {
-    currentScenario.value.trailingPromptItems = [];
-  }
   await handleSaveScenario(); // Save immediately
 }
 
 async function handleLoadScenario(scenarioId: string) {
   currentScenario.value = await scenarioUseCases.getScenarioById(scenarioId);
-  // 선행/후행 프롬프트 배열이 없으면 초기화
-  if (!currentScenario.value.leadingPromptItems) {
-    currentScenario.value.leadingPromptItems = [];
-  }
-  if (!currentScenario.value.trailingPromptItems) {
-    currentScenario.value.trailingPromptItems = [];
-  }
 }
 
 async function handleSaveScenario() {
@@ -665,13 +651,19 @@ async function handleGenerateImagesForCut(cutData: Cut) {
   console.log(`[ScenarioEditor] Final Negative Prompt: ${finalNegativePrompt}`);
 
   // 캐릭터 프롬프트 추출
-  console.log('[ScenarioEditor] Raw cut.characterPrompts before mapping:', JSON.parse(JSON.stringify(cut.characterPrompts?.map(cp => ({ id: cp.id, name: cp.name, prompt: cp.prompt, enabled: cp.enabled, promptItemsCount: cp.promptItems?.length || 0 })) || 'Not available/Empty')));
+  console.log('[ScenarioEditor] Raw cut.characterPrompts before mapping:', JSON.parse(JSON.stringify(cut.characterPrompts?.map(cp => ({ id: cp.id, name: cp.name, enabled: cp.enabled, promptItemsCount: cp.promptItems?.length || 0 })) || 'Not available/Empty')));
 
+  // 캐릭터 프롬프트에서 promptItems 배열의 프롬프트 추출
   const characterPrompts = cut.characterPrompts
     ?.filter(cp => cp.enabled !== false)
-    ?.map(cp => cp.prompt) || [];
+    ?.flatMap(cp => {
+      // 각 캐릭터 프롬프트의 promptItems 중 활성화된 항목만 추출
+      return cp.promptItems
+        ?.filter(item => item.enabled !== false)
+        ?.map(item => item.prompt) || [];
+    }) || [];
 
-    console.log(`[ScenarioEditor] Mapped characterPrompts (strings for API): ${JSON.stringify(characterPrompts)}`); // 기존 로그 수정하여 JSON으로 명확히
+  console.log(`[ScenarioEditor] Mapped characterPrompts (strings for API): ${JSON.stringify(characterPrompts)}`); // 기존 로그 수정하여 JSON으로 명확히
 
 
   // 이미지 생성 상태 초기화
@@ -695,7 +687,22 @@ async function handleGenerateImagesForCut(cutData: Cut) {
     // 현재 이미지 뷰어에 표시된 이미지 정보 저장
     const currentViewingImage = scenarioStore.getSelectedImage();
     
-    await handleSaveScenario();
+    // 시나리오 저장 시 로딩 표시 없이 저장
+    if (!currentScenario.value) return;
+    // 선행/후행 프롬프트 배열이 없으면 초기화
+    currentScenario.value.leadingPromptItems = currentScenario.value.leadingPromptItems || [];
+    currentScenario.value.trailingPromptItems = currentScenario.value.trailingPromptItems || [];
+
+    try {
+      const savedScenario = await scenarioStore.saveScenario(currentScenario.value);
+      if (savedScenario) {
+        currentScenario.value = savedScenario;
+      }
+      await loadAllScenarioSummaries(); 
+      console.log('[ScenarioEditor] 이미지 생성 전 시나리오 저장 완료:', currentScenario.value?.name);
+    } catch (error) {
+      console.error('[ScenarioEditor] 이미지 생성 전 시나리오 저장 오류:', error);
+    }
     
     // 저장 후 이미지 뷰어 상태 복원 (깨빡임 방지)
     if (currentViewingImage) {

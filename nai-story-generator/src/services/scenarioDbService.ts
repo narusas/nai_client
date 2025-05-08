@@ -1,8 +1,12 @@
-import { Scenario } from '@/domain/scenario/entities'; // Scenario 타입 import
+import { Scenario, ImageData } from '@/domain/scenario/entities'; // Scenario 타입 import
+import { resizeBase64Image } from '@/utils/imageUtils'; // 이미지 리사이징 함수 import
+import { useImageDbService } from './imageDbService'; // 이미지 DB 서비스 import
 
 const SCENARIO_PREFIX = 'scenario_';
 const META_PREFIX = 'meta_';
 const SCENARIO_IDS_KEY = 'scenario_ids';
+const THUMBNAIL_WIDTH = 70;
+const THUMBNAIL_HEIGHT = 70;
 
 export class ScenarioDbService {
   private makeSerializable(obj: any): any {
@@ -20,13 +24,117 @@ export class ScenarioDbService {
     localStorage.setItem(SCENARIO_IDS_KEY, JSON.stringify(ids));
   }
 
+  /**
+   * 이미지 데이터 처리 - 썸네일 생성 및 이미지 저장
+   * @param imageData 이미지 데이터 객체
+   * @returns 처리된 이미지 데이터 객체 (썸네일만 포함)
+   */
+  private async processImageData(imageData: any): Promise<ImageData> {
+    try {
+      const imageDbService = useImageDbService();
+      const imageId = imageData.id || `img_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+      let thumbnailUrl = imageData.thumbnailUrl;
+      let originalImageUrl = imageData.url;
+      
+      // 이미지 URL이 있고 base64 형식인 경우
+      if (originalImageUrl && originalImageUrl.startsWith('data:')) {
+        // 썸네일이 없는 경우 생성
+        if (!thumbnailUrl) {
+          thumbnailUrl = await resizeBase64Image(
+            originalImageUrl, 
+            THUMBNAIL_WIDTH, 
+            THUMBNAIL_HEIGHT
+          );
+        }
+        
+        // 원본 이미지를 IndexedDB에 저장
+        await imageDbService.saveImageData(imageId, originalImageUrl);
+      }
+      
+      // url 필드를 제외한 새 이미지 데이터 객체 생성
+      const processedImageData: ImageData = {
+        id: imageId,
+        thumbnailUrl: thumbnailUrl || '',
+        mainPrompt: imageData.mainPrompt,
+        characterPrompts: imageData.characterPrompts,
+        negativePrompt: imageData.negativePrompt,
+        width: imageData.width || 512,
+        height: imageData.height || 512,
+        seed: imageData.seed,
+        createdAt: imageData.createdAt instanceof Date ? imageData.createdAt : new Date()
+      };
+      
+      return processedImageData;
+    } catch (error) {
+      console.error('이미지 데이터 처리 중 오류 발생:', error);
+      // 오류 발생 시 기본 객체 반환
+      return {
+        id: imageData.id || `img_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
+        thumbnailUrl: imageData.thumbnailUrl || '',
+        width: imageData.width || 512,
+        height: imageData.height || 512,
+        createdAt: imageData.createdAt instanceof Date ? imageData.createdAt : new Date()
+      } as ImageData;
+    }
+  }
+
+  /**
+   * 시나리오의 모든 이미지 처리
+   * @param scenario 시나리오 객체
+   * @returns 처리된 시나리오 객체
+   */
+  private async processScenarioImages(scenario: Scenario): Promise<Scenario> {
+    try {
+      const updatedScenario = { ...scenario };
+      
+      // 시나리오 이미지가 있는 경우 처리
+      if (updatedScenario.image) {
+        updatedScenario.image = await this.processImageData(updatedScenario.image);
+      }
+      
+      // 시나리오의 컷들에 이미지가 있는 경우 처리
+      if (updatedScenario.cuts && updatedScenario.cuts.length > 0) {
+        for (let i = 0; i < updatedScenario.cuts.length; i++) {
+          const cut = updatedScenario.cuts[i];
+          if (cut.image) {
+            updatedScenario.cuts[i].image = await this.processImageData(cut.image);
+          }
+          
+          // 컷의 생성된 이미지들 처리
+          if (cut.generatedImages && cut.generatedImages.length > 0) {
+            const processedImages = [];
+            for (const img of cut.generatedImages) {
+              processedImages.push(await this.processImageData(img));
+            }
+            updatedScenario.cuts[i].generatedImages = processedImages;
+          }
+        }
+      }
+      
+      return updatedScenario;
+    } catch (error) {
+      console.error('시나리오 이미지 처리 중 오류 발생:', error);
+      return scenario; // 오류 발생 시 원본 시나리오 반환
+    }
+  }
+
   async saveScenario(scenario: Scenario): Promise<void> {
-    return new Promise((resolve, reject) => {
+    return new Promise(async (resolve, reject) => {
       try {
-        const serializableScenario = this.makeSerializable(scenario);
+        // 시나리오 복사본 생성
+        const scenarioCopy = JSON.parse(JSON.stringify(scenario));
+        
+        // 시나리오의 이미지 처리 (썸네일 생성 및 이미지 저장)
+        const processedScenario = await this.processScenarioImages(scenarioCopy);
+        
+        // 직렬화 가능한 객체로 변환
+        const serializableScenario = this.makeSerializable(processedScenario);
+        
+        // localStorage에 저장
         localStorage.setItem(SCENARIO_PREFIX + scenario.id, JSON.stringify(serializableScenario));
         
-        const ids = this.getScenarioIds();
+        // 시나리오 ID 목록 업데이트
+        let ids = this.getScenarioIds();
         if (!ids.includes(scenario.id)) {
           ids.push(scenario.id);
           this.saveScenarioIds(ids);

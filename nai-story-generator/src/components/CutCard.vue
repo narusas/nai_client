@@ -47,11 +47,12 @@
     <div class="image-panel">
       <!-- 대표 이미지 -->
       <div class="cut-image-preview" @click="handleRepresentativeImagePreviewClick">
-        <img 
-          v-if="props.cutData.representativeImage" 
-          :src="props.cutData.representativeImage" 
+        <LazyImage 
+          v-if="representativeImageId" 
+          :imageId="representativeImageId" 
           alt="대표 이미지"
           class="representative-image"
+          @loaded="handleRepresentativeImageLoaded"
         />
         <div v-else class="no-image">
           이미지 없음
@@ -66,14 +67,14 @@
             v-for="(imageData, imgIdx) in props.cutData.generatedImages" 
             :key="imageData.id || imgIdx" 
             class="thumbnail"
-            :class="{ 'selected': props.cutData.representativeImage === imageData.url }"
+            :class="{ 'selected': isRepresentativeImage(imageData.id) }"
             @click="handleThumbnailClick(imageData)"
             @dblclick="handleThumbnailDoubleClick(imageData)"
             :title="`이미지 ${imgIdx + 1}${imageData.seed ? ' (Seed: ' + imageData.seed + ')' : ''} (더블클릭: 대표 이미지로 설정)`"
           >
-            <img :src="imageData.url" :alt="`생성된 이미지 ${imgIdx + 1}`" />
+            <img :src="imageData.thumbnailUrl" :alt="`생성된 이미지 ${imgIdx + 1}`" />
             <span class="thumbnail-number">{{ imgIdx + 1 }}</span>
-            <span v-if="props.cutData.representativeImage === imageData.url" class="thumbnail-badge">대표</span>
+            <span v-if="isRepresentativeImage(imageData.id)" class="thumbnail-badge">대표</span>
           </div>
           <div v-if="!props.cutData.generatedImages || props.cutData.generatedImages.length === 0" class="empty-state-small">
             생성된 이미지가 없습니다.
@@ -151,6 +152,7 @@ import { v4 as uuidv4 } from 'uuid';
 import CharacterPromptComponent from './CharacterPrompt.vue'; 
 import ResolutionPanel from './ResolutionPanel.vue'; // ResolutionPanel import
 import PromptItemList from './PromptItemList.vue'; // PromptItemList import
+import LazyImage from './LazyImage.vue'; // LazyImage 컴포넌트 import
 import type { Cut, CharacterPrompt as CharacterPromptType, ImageData, PromptItem, ResolutionSetting } from '@/domain/scenario/entities';
 
 // Props definition
@@ -177,6 +179,22 @@ const emit = defineEmits([
 const showPrompts = ref(true); // 기본값을 true로 변경
 const showResolutionPanel = ref(false); // 해상도 설정 패널 표시 상태
 const imageCountWritable = ref(props.cutData?.imageCount || 1); // props.cutData가 없을 경우 기본값 1 사용
+
+// 대표 이미지 ID 참조 생성
+const representativeImageId = computed(() => {
+  if (!props.cutData || !props.cutData.representativeImageId) return null;
+  return props.cutData.representativeImageId;
+});
+
+// 대표 이미지 로드 완료 핸들러
+const handleRepresentativeImageLoaded = (payload) => {
+  console.log('대표 이미지 로드 완료:', payload);
+};
+
+// 특정 이미지가 대표 이미지인지 확인
+const isRepresentativeImage = (imageId) => {
+  return props.cutData.representativeImageId === imageId;
+};
 
 // 메인 프롬프트 아이템 참조 생성
 const mainPromptItemsRef = computed(() => {
@@ -414,38 +432,27 @@ const selectRepresentativeImage = (imageUrl: string) => {
   emit('selectRepresentativeImageInCut', { cutId: props.cutData.id, imageUrl });
 };
 
-// 썸네일 이미지 클릭 처리
-const handleThumbnailClick = (imageData: any) => {
-  // 클릭 시에는 이미지 뷰어만 열기
-  console.log('이미지 클릭:', imageData);
-  // 부모 컴포넌트에 이미지 데이터 전달
-  emit('view-image', {
-    imageData,
-    cutId: props.cutData.id,
-    allImages: props.cutData.generatedImages || []
-  });
+// 썸네일 클릭 핸들러
+const handleThumbnailClick = (imageData) => {
+  // 이미지 뷰어에 이미지 표시
+  emit('selectRepresentativeImageInCut', { cutId: props.cutData.id, imageId: imageData.id, imageData });
 };
 
-// 썸네일 이미지 더블클릭 처리
-const handleThumbnailDoubleClick = (imageData: any) => {
-  // 더블클릭 시에는 대표 이미지로 선택
-  selectRepresentativeImage(imageData.url);
+// 썸네일 더블클릭 핸들러 (대표 이미지로 설정)
+const handleThumbnailDoubleClick = (imageData) => {
+  // 대표 이미지 업데이트
+  const updatedCut = { ...props.cutData, representativeImageId: imageData.id };
+  emit('update:cutData', updatedCut);
 };
 
+// 대표 이미지 클릭 핸들러
 const handleRepresentativeImagePreviewClick = () => {
-  // 대표 이미지 클릭 시 이미지 뷰어 열기
-  if (props.cutData.representativeImage) {
-    // 이미지 데이터 찾기
-    const imageData = props.cutData.generatedImages.find(img => img.url === props.cutData.representativeImage) || {
-      url: props.cutData.representativeImage,
-      id: 'representative-' + props.cutData.id,
-      seed: null
-    };
-    
-    // 부모 컴포넌트에 이미지 데이터 전달 - 구조 통일
-    emit('view-image', {
-      imageData,
-      cutId: props.cutData.id,
+  if (props.cutData.representativeImageId) {
+    // 이미지 뷰어에 대표 이미지 표시
+    emit('selectRepresentativeImageInCut', { 
+      cutId: props.cutData.id, 
+      imageId: props.cutData.representativeImageId,
+      imageData: null, // 이미지 데이터 없음 (ID만 있음)
       allImages: props.cutData.generatedImages || []
     });
   }

@@ -1,12 +1,29 @@
 /**
- * IndexedDB를 사용하여 대표 이미지를 저장하고 관리하는 서비스
+ * IndexedDB를 사용하여 이미지를 저장하고 관리하는 서비스
  */
 import { blobUrlToBase64 } from '../utils/imageUtils';
 
 const DB_NAME = 'nai-image-db';
-const DB_VERSION = 3; // 버전 증가
+const DB_VERSION = 4; // 버전 증가
 const REPRESENTATIVE_STORE = 'representative-images';
 const GENERATED_IMAGES_STORE = 'generated-images';
+const IMAGE_STORE = 'images'; // 이미지 저장소
+
+// 이미지 서비스 인스턴스 제공 함수
+export function useImageDbService() {
+  return {
+    saveRepresentativeImage,
+    getRepresentativeImage,
+    getRepresentativeImages,
+    saveGeneratedImage,
+    getGeneratedImage,
+    getGeneratedImagesForCut,
+    getGeneratedImagesForScenario,
+    deleteScenarioImages,
+    getImageById,
+    saveImageData
+  };
+}
 
 // IndexedDB 초기화 및 연결
 async function openDb(): Promise<IDBDatabase> {
@@ -56,6 +73,13 @@ async function openDb(): Promise<IDBDatabase> {
         
         console.log('생성된 이미지 스토어 인덱스 생성 완료');
       }
+      
+      // DB_VERSION 4부터 - 이미지 스토어 생성
+      if (oldVersion < 4 && !db.objectStoreNames.contains(IMAGE_STORE)) {
+        // id를 키로 사용
+        db.createObjectStore(IMAGE_STORE, { keyPath: 'id' });
+        console.log('이미지 스토어 생성 완료');
+      }
     };
   });
 }
@@ -101,31 +125,119 @@ export async function saveRepresentativeImage(cutId: number, imageUrl: string, s
   }
 }
 
-// 생성된 이미지 저장
-export async function saveGeneratedImage(imageId: string, imageUrl: string, scenarioId: string, cutId: string): Promise<void> {
+// 이미지 데이터 저장 (id를 키로 사용)
+export async function saveImageData(id: string, imageUrl: string): Promise<void> {
   try {
     // Blob URL을 Base64로 변환
     const base64Image = await blobUrlToBase64(imageUrl);
+    
+    const db = await openDb();
+    const transaction = db.transaction([IMAGE_STORE], 'readwrite');
+    const store = transaction.objectStore(IMAGE_STORE);
+    
+    // 이미지 데이터 생성
+    const data = {
+      id,
+      imageUrl: base64Image,
+      savedAt: new Date().toISOString()
+    };
+    
+    // 저장
+    const request = store.put(data);
+    
+    return new Promise((resolve, reject) => {
+      request.onsuccess = () => {
+        console.log(`이미지 저장 성공: ${id}`);
+        resolve();
+      };
+      
+      request.onerror = (event) => {
+        console.error('이미지 저장 실패:', event);
+        reject('이미지를 저장하는 중 오류가 발생했습니다.');
+      };
+      
+      transaction.oncomplete = () => {
+        db.close();
+      };
+    });
+  } catch (error) {
+    console.error('이미지 저장 중 오류:', error);
+    throw error;
+  }
+}
+
+// ID로 이미지 가져오기
+export async function getImageById(id: string): Promise<string | null> {
+  try {
+    const db = await openDb();
+    const transaction = db.transaction([IMAGE_STORE], 'readonly');
+    const store = transaction.objectStore(IMAGE_STORE);
+    
+    // 이미지 가져오기
+    const request = store.get(id);
+    
+    return new Promise((resolve, reject) => {
+      request.onsuccess = () => {
+        const data = request.result;
+        if (data) {
+          console.log(`이미지 로드 완료: ${id}`);
+          resolve(data.imageUrl);
+        } else {
+          console.log(`이미지 없음: ${id}`);
+          resolve(null);
+        }
+      };
+      
+      request.onerror = (event) => {
+        console.error('이미지 불러오기 실패:', event);
+        reject('이미지를 불러오는 중 오류가 발생했습니다.');
+      };
+      
+      transaction.oncomplete = () => {
+        db.close();
+      };
+    });
+  } catch (error) {
+    console.error('이미지 불러오기 중 오류:', error);
+    return null;
+  }
+}
+
+// 생성된 이미지 저장
+export async function saveGeneratedImage(imageData: any): Promise<void> {
+  try {
+    // 이미지 URL이 있는 경우 Base64로 변환
+    let base64Image = null;
+    if (imageData.url && typeof imageData.url === 'string') {
+      base64Image = await blobUrlToBase64(imageData.url);
+    }
     
     const db = await openDb();
     const transaction = db.transaction([GENERATED_IMAGES_STORE], 'readwrite');
     const store = transaction.objectStore(GENERATED_IMAGES_STORE);
     
     // 이미지 데이터 생성
-    const imageData = {
-      imageId, // 이미지 ID
-      scenarioId, // 시나리오 ID
-      cutId, // 컷 ID
+    const dbImageData = {
+      imageId: imageData.id, // 이미지 ID
+      scenarioId: imageData.scenarioId || '', // 시나리오 ID
+      cutId: imageData.cutId || '', // 컷 ID
       imageUrl: base64Image, // Base64로 변환된 이미지 저장
+      width: imageData.width || 0,
+      height: imageData.height || 0,
+      seed: imageData.seed,
+      mainPrompt: imageData.mainPrompt,
+      negativePrompt: imageData.negativePrompt,
+      characterPrompts: imageData.characterPrompts,
+      createdAt: imageData.createdAt ? new Date(imageData.createdAt).toISOString() : new Date().toISOString(),
       savedAt: new Date().toISOString()
     };
     
     // 저장
-    const request = store.put(imageData);
+    const request = store.put(dbImageData);
     
     return new Promise((resolve, reject) => {
       request.onsuccess = () => {
-        console.log(`생성된 이미지 저장 성공: ${imageId}`);
+        console.log(`생성된 이미지 저장 성공: ${dbImageData.imageId}`);
         resolve();
       };
       
@@ -189,13 +301,13 @@ export async function getGeneratedImagesForScenario(scenarioId: string): Promise
       };
     });
   } catch (error) {
-    console.error('이미지 가져오기 중 오류:', error);
+    console.error('생성된 이미지 불러오기 중 오류:', error);
     return [];
   }
 }
 
 // 특정 컷의 모든 생성된 이미지 가져오기
-export async function getGeneratedImagesForCut(cutId: string): Promise<{ imageId: string; imageUrl: string; cutId: string }[]> {
+export async function getGeneratedImagesForCut(cutId: string): Promise<any[]> {
   try {
     const db = await openDb();
     const transaction = db.transaction([GENERATED_IMAGES_STORE], 'readonly');
@@ -208,12 +320,24 @@ export async function getGeneratedImagesForCut(cutId: string): Promise<{ imageId
     return new Promise((resolve, reject) => {
       request.onsuccess = () => {
         const images = request.result;
-        console.log(`컷 ${cutId}의 이미지 ${images.length}개 로드 완료`);
-        resolve(images.map(img => ({
-          imageId: img.imageId,
-          imageUrl: img.imageUrl,
-          cutId: img.cutId
-        })));
+        
+        // 결과 매핑 - ImageData 형식으로 변환
+        const mappedImages = images.map(img => ({
+          id: img.imageId,
+          url: img.imageUrl,
+          width: img.width || 0,
+          height: img.height || 0,
+          seed: img.seed,
+          mainPrompt: img.mainPrompt,
+          negativePrompt: img.negativePrompt,
+          characterPrompts: img.characterPrompts,
+          createdAt: img.createdAt ? new Date(img.createdAt) : new Date(),
+          cutId: img.cutId,
+          scenarioId: img.scenarioId
+        }));
+        
+        console.log(`컷 ${cutId}의 이미지 ${mappedImages.length}개 로드 완료`);
+        resolve(mappedImages);
       };
       
       request.onerror = (event) => {
@@ -232,7 +356,7 @@ export async function getGeneratedImagesForCut(cutId: string): Promise<{ imageId
 }
 
 // 생성된 이미지 가져오기
-export async function getGeneratedImage(imageId: string): Promise<string | null> {
+export async function getGeneratedImage(imageId: string): Promise<any | null> {
   try {
     const db = await openDb();
     const transaction = db.transaction([GENERATED_IMAGES_STORE], 'readonly');

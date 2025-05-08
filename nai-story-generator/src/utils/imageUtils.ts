@@ -35,6 +35,52 @@ export async function blobUrlToBase64(blobUrl: string): Promise<string> {
 }
 
 /**
+ * Base64 이미지를 지정된 크기로 리사이징
+ * @param base64Image Base64 인코딩된 이미지 문자열
+ * @param width 리사이징할 너비
+ * @param height 리사이징할 높이
+ * @returns Promise<string> 리사이징된 Base64 이미지 문자열
+ */
+export async function resizeBase64Image(base64Image: string, width: number = 70, height: number = 70): Promise<string> {
+  return new Promise((resolve, reject) => {
+    try {
+      // 이미지 객체 생성
+      const img = new Image();
+      img.onload = () => {
+        // Canvas 생성 및 크기 설정
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        
+        // 이미지 그리기
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          reject(new Error('Canvas 2D 컨텍스트를 가져올 수 없습니다.'));
+          return;
+        }
+        
+        // 이미지 리사이징하여 그리기
+        ctx.drawImage(img, 0, 0, width, height);
+        
+        // Canvas에서 Base64 문자열 추출
+        const resizedBase64 = canvas.toDataURL('image/jpeg', 0.7); // 품질 0.7로 JPEG 형식 사용
+        resolve(resizedBase64);
+      };
+      
+      img.onerror = () => {
+        reject(new Error('이미지 로드 중 오류가 발생했습니다.'));
+      };
+      
+      // Base64 이미지 로드
+      img.src = base64Image;
+    } catch (error) {
+      console.error('이미지 리사이징 중 오류 발생:', error);
+      reject(error);
+    }
+  });
+}
+
+/**
  * Base64 문자열의 크기 확인 (MB 단위)
  * @param base64String Base64 문자열
  * @returns 크기 (MB)

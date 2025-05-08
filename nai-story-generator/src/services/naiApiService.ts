@@ -742,7 +742,7 @@ export function useNaiApiService() {
 
   // 이미지 다운로드 함수 (Base64 버전은 사용하지 않으므로 Blob URL을 직접 사용)
   async function downloadImageViaBrowser(imageUrl: string, filename: string) {
-    console.log(`[naiApiService.downloadImageViaBrowser] Downloading ${filename} from ${imageUrl}`);
+    console.log(`[naiApiService.downloadImageViaBrowser] Downloading ${filename}`);
     try {
       const a = document.createElement('a');
       a.href = imageUrl; 

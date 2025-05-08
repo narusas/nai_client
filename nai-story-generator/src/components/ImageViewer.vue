@@ -1,6 +1,6 @@
 <template>
   <div class="image-viewer" :class="{ 'fullscreen': isFullscreen || isAppFullscreen, 'landscape': isLandscape }">
-    <div v-if="currentImage" class="image-display">
+    <div v-if="currentImageId" class="image-display">
       <div 
         class="image-container" 
         @dblclick="toggleDownloadButton" 
@@ -9,7 +9,13 @@
         @touchmove="handleTouchMove"
         @touchend="handleTouchEnd"
       >
-        <img :src="currentImage" alt="이미지" class="main-image" />
+        <LazyImage 
+          :imageId="currentImageId" 
+          alt="이미지" 
+          class="main-image" 
+          @loaded="handleImageLoaded"
+          @error="handleImageError"
+        />
         <button v-if="showDownloadButton" @click.stop="downloadImage" class="download-button">
           다운로드
         </button>
@@ -48,6 +54,8 @@ import { ref, watch, onMounted, onUnmounted, defineProps, defineEmits, nextTick,
 import { useScenarioStore } from '../stores/scenario';
 import { useNaiSettingsStore } from '../stores/naiSettings';
 import { useWindowSize } from '@vueuse/core';
+import { useImageDbService } from '../services/imageDbService';
+import LazyImage from './LazyImage.vue';
 
 // props 정의
 const props = defineProps({
@@ -62,7 +70,9 @@ const emit = defineEmits(['exit-fullscreen']);
 
 const scenarioStore = useScenarioStore();
 const naiSettingsStore = useNaiSettingsStore();
-const currentImage = ref<string | null>(null);
+const imageDbService = useImageDbService();
+const currentImageId = ref<string | null>(null);
+const currentImageUrl = ref<string | null>(null);
 const showDownloadButton = ref(false);
 const isFullscreen = ref(false);
 const isMobile = ref(false);
@@ -117,12 +127,12 @@ function handleOrientationChange() {
 // 컴포넌트 마운트 시 현재 이미지 가져오기
 onMounted(() => {
   // 시나리오 스토어에서 현재 이미지 가져오기
-  const selectedImage = scenarioStore.getSelectedImage();
+  const selectedImageId = scenarioStore.getSelectedImageId();
   const selectedImageData = scenarioStore.getSelectedImageData();
   
-  if (selectedImage) {
-    console.log('마운트 시 이미지 설정 (스토어):', selectedImage);
-    currentImage.value = selectedImage;
+  if (selectedImageId) {
+    console.log('마운트 시 이미지 ID 설정 (스토어):', selectedImageId);
+    currentImageId.value = selectedImageId;
     loadCurrentCutImages(selectedImageData);
   }
   
@@ -153,50 +163,43 @@ function loadCurrentCutImages(selectedImageData: any) {
   }
 }
 
-// 시나리오 스토어에서 선택된 이미지 감시 (깨빡임 방지를 위한 최적화)
-let previousImage = null;
+// 시나리오 스토어에서 선택된 이미지 ID 감시 (깨빡임 방지를 위한 최적화)
+let previousImageId = null;
 
-watch(() => scenarioStore.getSelectedImage(), (newImage) => {
-  console.log('이미지 선택 변경 감지:' );
+watch(() => scenarioStore.getSelectedImageId(), (newImageId) => {
+  console.log('이미지 ID 선택 변경 감지:', newImageId);
   
   // 동일한 이미지로 재설정되는 경우 무시 (깨빡임 방지)
-  if (newImage === previousImage && newImage === currentImage.value) {
-    console.log('동일한 이미지 재설정, 무시');
+  if (newImageId === previousImageId && newImageId === currentImageId.value) {
+    console.log('동일한 이미지 ID 재설정, 무시');
     return;
   }
   
-  previousImage = newImage;
+  previousImageId = newImageId;
   
-  if (newImage) {
-    console.log('새 이미지 선택됨:' );
-    currentImage.value = newImage;
+  if (newImageId) {
+    console.log('새 이미지 ID 선택됨:', newImageId);
+    currentImageId.value = newImageId;
     showDownloadButton.value = false; // 새 이미지 선택 시 일단 다운로드 버튼 숨김
     
     // 선택된 이미지 데이터 가져오기
     const selectedImageData = scenarioStore.getSelectedImageData();
-    if (selectedImageData && selectedImageData.url) {
-      // 현재 이미지가 이미 로드된 경우 재로드하지 않음 (깨빡임 방지)
-      if (currentCutImages.value.length > 0 && 
-          currentCutImages.value.some(img => img.url === selectedImageData.url) &&
-          currentImageIndex.value !== -1) {
-        console.log('이미 로드된 이미지 컷, 인덱스 유지');
-      } else {
-        loadCurrentCutImages(selectedImageData);
-      }
-    } else if (!selectedImageData && newImage) {
-      // getSelectedImage()는 있는데 getSelectedImageData()가 없는 비정상적인 경우,
-      // 또는 selectedImageData에 url이 없는 경우, 이미지 뷰어만 초기화
-      console.warn('getSelectedImageData()가 null이거나 url이 없습니다.');
+    if (selectedImageData) {
+      console.log('선택된 이미지 데이터:', selectedImageData);
+      loadCurrentCutImages(selectedImageData);
+    } else {
+      console.log('선택된 이미지 데이터 없음');
       // 현재 이미지가 유효하면 유지 (깨빡임 방지)
       if (!currentCutImages.value.length) {
         currentCutImages.value = [];
         currentImageIndex.value = -1;
       }
     }
-  } else if (!newImage && currentImage.value) {
+  } else if (!newImageId && currentImageId.value) {
     // 선택된 이미지가 없으면 초기화
     console.log('이미지 초기화');
-    currentImage.value = null;
+    currentImageId.value = null;
+    currentImageUrl.value = null;
     currentCutImages.value = [];
     currentImageIndex.value = -1;
   }
@@ -275,27 +278,25 @@ function handleTouchEnd(event: TouchEvent) {
 
 // 이전 이미지로 이동
 function navigateToPreviousImage() {
-  if (!hasPreviousImage.value) return;
-  
-  currentImageIndex.value--;
-  const prevImage = currentCutImages.value[currentImageIndex.value];
-  
-  if (prevImage) {
-    currentImage.value = prevImage.url;
-    scenarioStore.selectImage(prevImage.url, prevImage);
+  if (hasPreviousImage.value && currentCutImages.value.length > 0) {
+    currentImageIndex.value--;
+    const prevImage = currentCutImages.value[currentImageIndex.value];
+    if (prevImage) {
+      currentImageId.value = prevImage.id;
+      showDownloadButton.value = false; // 이미지 변경 시 다운로드 버튼 숨김
+    }
   }
 }
 
 // 다음 이미지로 이동
 function navigateToNextImage() {
-  if (!hasNextImage.value) return;
-  
-  currentImageIndex.value++;
-  const nextImage = currentCutImages.value[currentImageIndex.value];
-  
-  if (nextImage) {
-    currentImage.value = nextImage.url;
-    scenarioStore.selectImage(nextImage.url, nextImage);
+  if (hasNextImage.value && currentCutImages.value.length > 0) {
+    currentImageIndex.value++;
+    const nextImage = currentCutImages.value[currentImageIndex.value];
+    if (nextImage) {
+      currentImageId.value = nextImage.id;
+      showDownloadButton.value = false; // 이미지 변경 시 다운로드 버튼 숨김
+    }
   }
 }
 
@@ -333,34 +334,44 @@ function exitFullscreen(event: Event) {
 
 // 이미지 다운로드
 function downloadImage(event: Event) {
-  event.stopPropagation(); // 이미지 클릭 이벤트가 버튼에도 전파되지 않도록 방지
+  event.stopPropagation();
   
-  if (!currentImage.value) return;
+  if (!currentImageUrl.value) return;
   
-  // 현재 날짜와 시간을 포맷팅하여 파일명 생성
-  const now = new Date();
-  const year = now.getFullYear();
-  const month = String(now.getMonth() + 1).padStart(2, '0');
-  const day = String(now.getDate()).padStart(2, '0');
-  const hours = String(now.getHours()).padStart(2, '0');
-  const minutes = String(now.getMinutes()).padStart(2, '0');
-  const seconds = String(now.getSeconds()).padStart(2, '0');
-  
-  // 설정된 이미지 포맷 가져오기
-  const imageFormat = naiSettingsStore.settings.imageFormat;
-  const fileExtension = imageFormat === 'jpg' ? 'jpg' : 'png';
-  
-  const fileName = `nai_${year}${month}${day}_${hours}${minutes}${seconds}.${fileExtension}`;
-  
-  // 다운로드 링크 생성 및 클릭
-  const link = document.createElement('a');
-  link.href = currentImage.value;
-  link.download = fileName;
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
+  try {
+    // 이미지 URL에서 파일명 추출 또는 기본 파일명 사용
+    const filename = 'nai-generated-image.png';
+    
+    // 다운로드 링크 생성
+    const link = document.createElement('a');
+    link.href = currentImageUrl.value;
+    link.download = filename;
+    document.body.appendChild(link);
+    
+    // 다운로드 클릭 시뮬레이션
+    link.click();
+    
+    // 링크 제거
+    document.body.removeChild(link);
+    
+    // 다운로드 버튼 숨김
+    showDownloadButton.value = false;
+  } catch (error) {
+    console.error('이미지 다운로드 중 오류 발생:', error);
+    alert('이미지 다운로드 중 오류가 발생했습니다.');
+  }
 }
 
+// 이미지 로드 완료 핸들러
+function handleImageLoaded(payload) {
+  console.log('이미지 로드 완료:', payload);
+  currentImageUrl.value = payload.url;
+}
+
+// 이미지 로드 오류 핸들러
+function handleImageError(payload) {
+  console.error('이미지 로드 오류:', payload);
+}
 </script>
 
 <style scoped>

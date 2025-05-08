@@ -460,13 +460,17 @@ export class ScenarioUseCases {
 
   /**
    * 생성된 이미지 저장
-   * @param imageId 이미지 ID
-   * @param imageUrl 이미지 URL
-   * @param scenarioId 시나리오 ID
-   * @param cutId 컷 ID
+   * @param imageData 이미지 데이터 객체
    */
-  async saveGeneratedImage(imageId: string, imageUrl: string, scenarioId: string, cutId: string): Promise<void> {
-    await this.imageRepository.saveGeneratedImage(imageId, imageUrl, scenarioId, cutId);
+  async saveGeneratedImage(imageData: ImageData): Promise<void> {
+    // 시나리오 ID와 컷 ID 정보 추가
+    const imageDataWithContext = {
+      ...imageData,
+      scenarioId: imageData.scenarioId || '',
+      cutId: imageData.cutId || ''
+    };
+    
+    await this.imageRepository.saveGeneratedImage(imageDataWithContext);
   }
 
   /**
@@ -474,7 +478,7 @@ export class ScenarioUseCases {
    * @param scenarioId 시나리오 ID
    * @returns 이미지 데이터 배열
    */
-  async getGeneratedImagesForScenario(scenarioId: string): Promise<{ imageId: string; imageUrl: string; cutId: string }[]> {
+  async getGeneratedImagesForScenario(scenarioId: string): Promise<ImageData[]> {
     return await this.imageRepository.getGeneratedImagesForScenario(scenarioId);
   }
 
@@ -493,13 +497,21 @@ export class ScenarioUseCases {
    */
   createNewScenario(): Scenario {
     const newId = uuidv4();
-    const now = new Date().toISOString();
+    const now = new Date();
     return {
       id: newId,
       name: '새 시나리오',
       description: '',
+      leadingPromptItems: [{
+        id: uuidv4(),
+        prompt: 'artist:rella, year2024',
+        negativePrompt: undefined,
+        probability: 100,
+        enabled: true,
+      }],
+      trailingPromptItems: [],
       cuts: [
-        this.createNewCut(true) // 첫 번째 컷은 기본값으로 생성
+        this.createNewCut() // 첫 번째 컷은 기본값으로 생성
       ],
       createdAt: now,
       updatedAt: now,
@@ -524,13 +536,30 @@ export class ScenarioUseCases {
       mainPromptItems: [
         {
           id: defaultPromptItemId,
-          prompt: '1girl, artist:rella',
+          prompt: 'outside, day',
           negativePrompt: 'nsfw, blurry, lowres, error, film grain, scan artifacts, worst quality, bad quality, jpeg artifacts, very displeasing, chromatic aberration, multiple views, logo, too many watermarks, white blank page, blank page',
           probability: 100,
           enabled: true,
         }
       ],
-      characterPrompts: [],
+      characterPrompts: [{
+        id: uuidv4(),
+        name: '캐릭터 프롬프트',
+        promptItems: [
+          {
+            id: defaultPromptItemId,
+            prompt: 'girl',
+            negativePrompt: undefined,
+            probability: 100,
+            enabled: true,
+          }
+        ],
+        position: {
+          x: 0.5,
+          y: 0.5,
+        },
+        enabled: true,
+      }],
       imageCount: 1,
       generatedImages: [],
       representativeImage: null,
