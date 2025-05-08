@@ -77,7 +77,7 @@
         <slot name="additional-fields" :item="promptItem" :index="index"></slot>
       </div>
     </div>
-    <button @click="addPromptItem" class="add-prompt-btn">
+    <button v-if="addButtonText && addButtonText.trim() !== ''" @click="addPromptItem" class="add-prompt-btn">
       <font-awesome-icon :icon="['fas', 'plus']" /> {{ addButtonText }}
     </button>
   </div>
@@ -159,8 +159,6 @@ function addPromptItem() {
     // v-model 업데이트
     emit('update:modelValue', currentItems);
     
-    // 기존 이벤트도 발생
-    emit('add-prompt-item');
     console.log('[PromptItemList] add-prompt-item 이벤트 발생됨');
   } catch (error) {
     console.error('[PromptItemList] addPromptItem 오류 발생:', error);

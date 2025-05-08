@@ -328,51 +328,59 @@ function removeMainPromptItem(index: number) {
 
 // --- Character Prompt Management ---
 const addCharacterPrompt = () => {
-    if (!props.cutData.characterPrompts) {
-        props.cutData.characterPrompts = [];
+    const currentCutData = JSON.parse(JSON.stringify(props.cutData)); // 데이터 복사
+
+    if (!currentCutData.characterPrompts) {
+        currentCutData.characterPrompts = [];
     }
-    props.cutData.characterPrompts.push({
+
+    const newCharacterPrompt: CharacterPromptType = {
         id: uuidv4(),
         name: '',
-        prompt: '',
-        negativePrompt: '',
-        probability: 100,
-        enabled: true,
-        position: { x: 0.5, y: 0.5 }
-    });
-    updateCutData();
+        promptItems: [], // promptItems를 빈 배열로 초기화
+        position: { x: 0.5, y: 0.5 }, // 필수 필드, 기본값 설정
+        enabled: true // 캐릭터 프롬프트 그룹 자체의 활성화 여부
+    };
+
+    currentCutData.characterPrompts.push(newCharacterPrompt);
+    emit('update:cutData', currentCutData); // 수정된 전체 cutData emit
 };
 
 const removeCharacterPrompt = (index: number) => {
-    props.cutData.characterPrompts.splice(index, 1);
-    updateCutData();
+    const currentCutData = JSON.parse(JSON.stringify(props.cutData)); // 데이터 복사
+    if (currentCutData.characterPrompts) {
+        currentCutData.characterPrompts.splice(index, 1);
+        emit('update:cutData', currentCutData);
+    }
 };
 
 const updateCharacterPrompt = (index: number, updatedCharPrompt: CharacterPromptType) => {
-    if (props.cutData.characterPrompts && props.cutData.characterPrompts[index]) {
-        props.cutData.characterPrompts[index] = updatedCharPrompt;
-        updateCutData();
+    const currentCutData = JSON.parse(JSON.stringify(props.cutData)); // 데이터 복사
+    if (currentCutData.characterPrompts && currentCutData.characterPrompts[index]) {
+        currentCutData.characterPrompts[index] = updatedCharPrompt;
+        emit('update:cutData', currentCutData);
     }
 };
 
 const moveCharacterPromptUp = (index: number) => {
-    if (index > 0) {
-        const temp = props.cutData.characterPrompts[index];
-        props.cutData.characterPrompts[index] = props.cutData.characterPrompts[index - 1];
-        props.cutData.characterPrompts[index - 1] = temp;
-        updateCutData();
+    const currentCutData = JSON.parse(JSON.stringify(props.cutData)); // 데이터 복사
+    if (currentCutData.characterPrompts && index > 0) {
+        const temp = currentCutData.characterPrompts[index];
+        currentCutData.characterPrompts[index] = currentCutData.characterPrompts[index - 1];
+        currentCutData.characterPrompts[index - 1] = temp;
+        emit('update:cutData', currentCutData);
     }
 };
 
 const moveCharacterPromptDown = (index: number) => {
-    if (index < props.cutData.characterPrompts.length - 1) {
-        const temp = props.cutData.characterPrompts[index];
-        props.cutData.characterPrompts[index] = props.cutData.characterPrompts[index + 1];
-        props.cutData.characterPrompts[index + 1] = temp;
-        updateCutData();
+    const currentCutData = JSON.parse(JSON.stringify(props.cutData)); // 데이터 복사
+    if (currentCutData.characterPrompts && index < currentCutData.characterPrompts.length - 1) {
+        const temp = currentCutData.characterPrompts[index];
+        currentCutData.characterPrompts[index] = currentCutData.characterPrompts[index + 1];
+        currentCutData.characterPrompts[index + 1] = temp;
+        emit('update:cutData', currentCutData);
     }
 };
-
 
 // --- Image Generation and Selection ---
 const emitGenerateImages = () => {
@@ -429,8 +437,6 @@ const emitRemoveCut = () => {
 </script>
 
 <style scoped>
-/* Styles remain largely the same, with minor adjustments if needed for ResolutionPanel integration */
-/* ... existing styles ... */
 
 .cut-card {
   border: 1px solid #e0e0e0;
@@ -439,14 +445,13 @@ const emitRemoveCut = () => {
   background-color: #f9f9f9;
   box-shadow: 0 2px 4px rgba(0,0,0,0.05);
   overflow: hidden; /* Ensures child elements don't break rounded corners */
-  width: 350px; /* 너비 고정 - 가로 배치에 적합한 크기로 조정 */
+  width: 400px; /* 너비 고정 - 가로 배치에 적합한 크기로 조정 */
   flex-shrink: 0; /* 부모 컨테이너가 작아질 때 압축되지 않도록 설정 */
   scroll-snap-align: start; /* 스크롤 스납 적용 */
   transition: transform 0.2s ease; /* 호버 효과를 위한 트랜지션 */
 }
 
 .cut-card:hover {
-  transform: translateY(-5px);
   box-shadow: 0 5px 15px rgba(0,0,0,0.1);
 }
 
@@ -674,7 +679,6 @@ button {
   border-radius: 4px;
   cursor: pointer;
   font-weight: 500;
-  transition: background-color 0.2s ease-in-out;
   font-size: 0.85rem;
 }
 

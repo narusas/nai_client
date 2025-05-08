@@ -27,16 +27,19 @@
               
               <!-- NAI 설정 요약 정보 패널 -->
               <div class="settings-summary" v-if="!showSettings">
+
+                <div class="summary-item" v-if="settingsSummary.modelName">
+                  <span class="summary-value">{{ formattedModelName }}</span>
+                </div>
                 <div class="summary-item" v-if="settingsSummary.sampler">
-                  <span class="summary-label"></span>
-                  <span class="summary-value">{{ settingsSummary.sampler }}</span>
+                  <span class="summary-value">{{ formattedSampler }}</span>
                 </div>
                 <div class="summary-item" v-if="settingsSummary.steps">
                   <span class="summary-label">S:</span>
                   <span class="summary-value">{{ settingsSummary.steps }}</span>
                 </div>
                 <div class="summary-item" v-if="settingsSummary.cfg">
-                  <span class="summary-label">CFG:</span>
+                  <span class="summary-label">C:</span>
                   <span class="summary-value">{{ settingsSummary.cfg }}</span>
                 </div>
                 <div class="summary-item" v-if="settingsSummary.guidance">
@@ -125,6 +128,73 @@ const settingsSummary = ref({
   steps: '',
   cfg: '',
   guidance: ''
+});
+
+const formattedSampler = computed(() => {
+  const sampler = settingsSummary.value.sampler;
+  if (!sampler) {
+    return '';
+  }
+
+  let cleanedSampler = sampler;
+  if (cleanedSampler.startsWith('k_')) {
+    cleanedSampler = cleanedSampler.substring(2);
+  }
+
+  const tokens = cleanedSampler.split('_');
+  const initials = tokens.map(token => {
+    if (token.length > 0) {
+      return token.charAt(0).toUpperCase();
+    }
+    return '';
+  }).join('');
+
+  return initials;
+});
+
+const formattedModelName = computed(() => {
+  const modelName = settingsSummary.value.modelName;
+  if (!modelName) {
+    return '';
+  }
+
+  let cleanedModelName = modelName;
+  const prefix = "NAI Diffusion ";
+  if (cleanedModelName.startsWith(prefix)) {
+    cleanedModelName = cleanedModelName.substring(prefix.length).trim();
+  }
+  
+  // 중간 카테고리 (Anime, Furry 등) 제거 로직 (필요시 활성화)
+  // cleanedModelName = cleanedModelName.replace(/Anime\s|Furry\s/g, '').trim();
+
+  const parts = cleanedModelName.split(' ').filter(p => p.length > 0);
+
+  if (parts.length === 0) {
+    return '';
+  }
+
+  let mainPart = parts[0];
+  let typeInitial = '';
+
+  const isVersionNumber = /^(V?\d+(\.\d+)?)$/.test(mainPart);
+
+  if (isVersionNumber) {
+    if (parts.length > 1) {
+      typeInitial = parts[1].charAt(0).toUpperCase(); 
+    }
+  } else {
+    mainPart = mainPart.charAt(0).toUpperCase(); 
+    if (parts.length > 1) {
+      typeInitial = parts[1].charAt(0).toUpperCase();
+    }
+  }
+  
+  let result = mainPart;
+  if (typeInitial) {
+    result += ` ${typeInitial}`;
+  }
+
+  return result;
 });
 
 // 전체화면 모드 변경 감시
@@ -349,36 +419,40 @@ const isAnyImageGenerating = computed(() => scenarioStore.isAnyImageGenerating);
 .main-container {
   display: flex;
   flex-direction: row;
-  height: 100vh;
-  width: 100vw;
-  max-width: 100vw;
-  margin: 0;
-  padding: 0;
+  width: 100%; /* 부모(v-main) 너비 채우기 */
+  height: 100%; /* 부모(v-main) 높이 채우기 */
   overflow: hidden;
 }
 
 .left-panel {
-  width: 30%;
-  min-width: 0;
+  flex: 0 0 430px; /* 고정 너비 750px, 늘어나거나 줄어들지 않음 */
+  width: 430px; /* 명시적 너비 설정 (flex-basis와 함께 사용 시 주의, 여기서는 보조 역할) */
+  min-width: 430px; /* 최소 너비 강제 */
+  max-width: 430px; /* 최대 너비 강제 */
   display: flex;
   flex-direction: column;
   overflow-y: auto;
-  overflow-x: hidden;
+  overflow-x: hidden; /* 내부 콘텐츠로 인한 가로 확장 방지 */
   background-color: #f5f5f5;
   border-right: 1px solid #ddd;
-  flex: 1 1 0;
-  max-height: 100vh;
+  max-height: 100vh; /* 화면 높이 제한 */
   padding-right: 0.5rem;
+}
 
+.left-panel.fullscreen-editor {
+  flex: 1 1 100%; /* 전체 화면 모드일 때 화면 전체 너비 차지 */
+  width: 100%; /* 명시적 너비 설정 */
+  min-width: 0; /* 최소 너비 제한 해제 */
+  max-width: none; /* 최대 너비 제한 해제 */
+  padding-left: 0;
+  padding-right: 0;
 }
 
 .right-panel {
-  width: 70%;
+  flex: 1 1 auto; /* 남은 공간을 모두 차지하며, 필요시 축소 가능 */
   overflow: hidden;
-}
-
-.settings-panel, .scenario-editor, .image-viewer {
-  padding: 0.5rem;
+  display: flex;
+  flex-direction: column;
 }
 
 /* 시나리오 에디터 상단 영역 스타일 */
@@ -429,7 +503,7 @@ const isAnyImageGenerating = computed(() => scenarioStore.isAnyImageGenerating);
 .settings-summary {
   display: flex;
   flex-wrap: wrap;
-  gap: 1rem;
+  gap: 0.1rem; /* 아이템 간 간격 매우 좁게 조정 */
   flex: 1;
   justify-content: center;
 }
@@ -465,7 +539,7 @@ const isAnyImageGenerating = computed(() => scenarioStore.isAnyImageGenerating);
   }
   
   .settings-summary {
-    gap: 0.5rem;
+    gap: 0.1rem; /* 모바일에서 아이템 간 간격 매우 좁게 조정 */
     justify-content: flex-start;
     overflow-x: auto;
     padding: 0.2rem 0;
@@ -489,18 +563,17 @@ const isAnyImageGenerating = computed(() => scenarioStore.isAnyImageGenerating);
 }
   
   .left-panel {
-    width: 100% !important; /* !important를 추가하여 다른 스타일 오버라이드 */
+    width: 100% !important;
     height: 100%;
     border-right: none;
     overflow-y: auto;
     flex: 1;
-    max-width: 100%; /* 최대 너비 제한 제거 */
-    padding-right: 0; /* 오른쪽 패딩 제거 */
-    /* 애니메이션 제거 */
+    max-width: 100%;
+    padding-right: 0;
   }
   
   .left-panel.hidden {
-    display: none; /* transform 대신 display: none 사용하여 즉시 숨김 */
+    display: none;
     position: absolute;
     left: 0;
     top: 0;
@@ -509,12 +582,12 @@ const isAnyImageGenerating = computed(() => scenarioStore.isAnyImageGenerating);
   }
   
   .settings-panel, .scenario-editor {
-    padding: 0.8rem;
-    width: 100%; /* 전체 너비 사용 */
+    padding: 0.8rem 0; /* 상하 0.8rem, 좌우 0 */
+    width: 100%;
   }
   
   .right-panel {
-    display: none; /* 모바일에서는 기본적으로 숨김 */
+    display: none;
   }
   
   .right-panel.fullscreen {
@@ -526,8 +599,6 @@ const isAnyImageGenerating = computed(() => scenarioStore.isAnyImageGenerating);
     height: 100vh;
     z-index: 1000;
     background-color: rgba(0, 0, 0, 0.9);
-    /* 애니메이션 제거 */
-    will-change: auto; /* 하드웨어 가속화 제거 */
   }
   
   .fullscreen .image-viewer {
@@ -557,7 +628,7 @@ const isAnyImageGenerating = computed(() => scenarioStore.isAnyImageGenerating);
   }
   
   .scenario-editor {
-    margin-bottom: 2rem; /* 하단 여백 추가 */
+    margin-bottom: 2rem;
   }
   
   .app-container {
@@ -572,17 +643,6 @@ const isAnyImageGenerating = computed(() => scenarioStore.isAnyImageGenerating);
   }
 }
 
-.left-panel {
-  width: 30%;
-  min-width: 0;
-  padding-right: 0.5rem;
-  display: flex;
-  flex-direction: column;
-  overflow-y: auto; /* 세로 스크롤 허용 */
-  transition: width 0.3s ease;
-  max-height: 100vh; /* 화면 높이를 넘지 않도록 제한 */
-  flex: 1 1 0;
-}
 
 .left-panel.fullscreen-editor {
   width: 100%;
@@ -601,7 +661,7 @@ const isAnyImageGenerating = computed(() => scenarioStore.isAnyImageGenerating);
 
 .image-viewer {
   height: 100%;
-  overflow: hidden; /* 스크롤 비활성화 */
+  overflow: hidden;
   display: flex;
   flex-direction: column;
 }

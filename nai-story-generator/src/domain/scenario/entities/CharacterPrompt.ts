@@ -8,7 +8,7 @@ export interface CharacterPrompt {
   id: string; // 캐릭터 프롬프트 그룹 식별자
   name: string; // 캐릭터 프롬프트 그룹 이름
   promptItems: PromptItem[]; // 프롬프트 항목 목록
-  position?: { // 캐릭터 위치 정보 (선택적)
+  position: { // 캐릭터 위치 정보 (필수)
     x: number; // X 좌표
     y: number; // Y 좌표
   };

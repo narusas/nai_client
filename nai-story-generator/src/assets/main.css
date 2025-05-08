@@ -51,7 +51,7 @@ button.secondary:hover {
 }
 
 input, textarea, select {
-  padding: 0.5rem;
+  padding: 0.15rem;
   border: 1px solid var(--border-color);
   border-radius: 4px;
   font-size: 0.9rem;
@@ -167,7 +167,7 @@ input:focus, textarea:focus, select:focus {
 /* Vuetify 텍스트 필드 및 텍스트 영역 내부 입력 글자 크기 조정 */
 .v-text-field .v-field__input,
 .v-textarea .v-field__input {
-  font-size: 8px !important;
+  font-size: 11px !important;
   /* line-height: normal !important; */ /* 필요시 주석 해제 */
 }
 

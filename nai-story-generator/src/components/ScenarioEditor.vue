@@ -20,15 +20,12 @@
       <div class="scenario-actions">
         <button @click="showScenarioList = true" class="action-button">
           <font-awesome-icon icon="fa-solid fa-folder-open" />
-          <span>시나리오 목록</span>
         </button>
         <button @click="handleNewScenario" class="action-button">
           <font-awesome-icon icon="fa-solid fa-plus" />
-          <span>새 시나리오</span>
         </button>
         <button @click="handleSaveScenario" class="action-button primary">
           <font-awesome-icon icon="fa-solid fa-save" />
-          <span>저장</span>
         </button>
       </div>
     </div>
@@ -49,7 +46,6 @@
           <PromptItemList
             v-model="currentScenario.leadingPromptItems"
             add-button-text="선행 프롬프트 추가"
-            @add-prompt-item="addLeadingPromptItem"
             @remove-prompt-item="removeLeadingPromptItem"
             @toggle-enabled="toggleLeadingPromptItemEnabled"
             @update-probability="updateLeadingPromptItemProbability"
@@ -72,7 +68,6 @@
           <PromptItemList
             v-model="currentScenario.trailingPromptItems"
             add-button-text="후행 프롬프트 추가"
-            @add-prompt-item="addTrailingPromptItem"
             @remove-prompt-item="removeTrailingPromptItem"
             @toggle-enabled="toggleTrailingPromptItemEnabled"
             @update-probability="updateTrailingPromptItemProbability"
@@ -267,35 +262,6 @@ const toggleTrailingPromptPanel = () => {
 };
 
 // 선행 프롬프트 관리
-function addLeadingPromptItem() {
-  console.log('[ScenarioEditor] addLeadingPromptItem 호출됨');
-  if (!currentScenario.value) return;
-  
-  // 기존 배열이 없으면 빈 배열 생성
-  const leadingPromptItems = currentScenario.value.leadingPromptItems || [];
-  
-  // 새 프롬프트 아이템 생성
-  const newPromptItem: PromptItem = {
-    id: uuidv4(),
-    prompt: '',
-    negativePrompt: '',
-    probability: 100,
-    enabled: true
-  };
-  
-  // 새 배열 생성 (불변성 유지)
-  const updatedItems = [...leadingPromptItems, newPromptItem];
-  
-  // currentScenario 업데이트
-  currentScenario.value = {
-    ...currentScenario.value,
-    leadingPromptItems: updatedItems
-  };
-  
-  console.log('[ScenarioEditor] 선행 프롬프트 아이템 추가됨:', newPromptItem);
-  console.log('[ScenarioEditor] 업데이트된 선행 프롬프트 아이템:', updatedItems);
-}
-
 function removeLeadingPromptItem(index: number) {
   if (!currentScenario.value || !currentScenario.value.leadingPromptItems) return;
   
@@ -317,47 +283,16 @@ function updateLeadingPromptItemProbability(index: number, probability: number) 
 }
 
 function updateLeadingPromptItem(index: number, field: 'prompt' | 'negativePrompt', value: string) {
-  if (!currentScenario.value || !currentScenario.value.leadingPromptItems) return;
-  
+  if (!currentScenario.value || !currentScenario.value.leadingPromptItems || !currentScenario.value.leadingPromptItems[index]) return;
   currentScenario.value.leadingPromptItems[index][field] = value;
+  // 변경 사항 저장 로직 (예: handleSaveScenario() 또는 디바운스된 저장)을 고려할 수 있습니다.
 }
 
-// PromptItemList 컴포넌트에서 update-prompt 이벤트 처리
 function handleUpdateLeadingPrompt(payload: { index: number, field: 'prompt' | 'negativePrompt', value: string }) {
-  console.log('[ScenarioEditor] handleUpdateLeadingPrompt 호출됨:', payload);
   updateLeadingPromptItem(payload.index, payload.field, payload.value);
 }
 
 // 후행 프롬프트 관리
-function addTrailingPromptItem() {
-  console.log('[ScenarioEditor] addTrailingPromptItem 호출됨');
-  if (!currentScenario.value) return;
-  
-  // 기존 배열이 없으면 빈 배열 생성
-  const trailingPromptItems = currentScenario.value.trailingPromptItems || [];
-  
-  // 새 프롬프트 아이템 생성
-  const newPromptItem: PromptItem = {
-    id: uuidv4(),
-    prompt: '',
-    negativePrompt: '',
-    probability: 100,
-    enabled: true
-  };
-  
-  // 새 배열 생성 (불변성 유지)
-  const updatedItems = [...trailingPromptItems, newPromptItem];
-  
-  // currentScenario 업데이트
-  currentScenario.value = {
-    ...currentScenario.value,
-    trailingPromptItems: updatedItems
-  };
-  
-  console.log('[ScenarioEditor] 후행 프롬프트 아이템 추가됨:', newPromptItem);
-  console.log('[ScenarioEditor] 업데이트된 후행 프롬프트 아이템:', updatedItems);
-}
-
 function removeTrailingPromptItem(index: number) {
   if (!currentScenario.value || !currentScenario.value.trailingPromptItems) return;
   
@@ -379,14 +314,12 @@ function updateTrailingPromptItemProbability(index: number, probability: number)
 }
 
 function updateTrailingPromptItem(index: number, field: 'prompt' | 'negativePrompt', value: string) {
-  if (!currentScenario.value || !currentScenario.value.trailingPromptItems) return;
-  
+  if (!currentScenario.value || !currentScenario.value.trailingPromptItems || !currentScenario.value.trailingPromptItems[index]) return;
   currentScenario.value.trailingPromptItems[index][field] = value;
+  // 변경 사항 저장 로직을 고려할 수 있습니다.
 }
 
-// PromptItemList 컴포넌트에서 update-prompt 이벤트 처리
 function handleUpdateTrailingPrompt(payload: { index: number, field: 'prompt' | 'negativePrompt', value: string }) {
-  console.log('[ScenarioEditor] handleUpdateTrailingPrompt 호출됨:', payload);
   updateTrailingPromptItem(payload.index, payload.field, payload.value);
 }
 
@@ -638,11 +571,15 @@ async function handleGenerateImagesForCut(cutData: Cut) {
     return;
   }
 
+  // **** 중요 로그 추가: 함수 시작 시 cut.characterPrompts 상태 확인 ****
+  console.log('[ScenarioEditor] Start of handleGenerateImagesForCut. Initial cut.characterPrompts:', JSON.parse(JSON.stringify(cut.characterPrompts?.map(cp => ({ id: cp.id, name: cp.name, prompt: cp.prompt, enabled: cp.enabled, promptItemsCount: cp.promptItems?.length || 0 })) || 'Not available/Empty')));
+  // **** 중요 로그 추가 끝 ****
+
   console.log('[ScenarioEditor] Generating images for cut:', 
     JSON.parse(JSON.stringify(cut))); // 반응형 프록시를 일반 객체로 변환하여 로깅
   
   // 현재 시나리오에서 컷 인덱스 확인
-  const cutIndex = currentScenario.value.cuts.findIndex(c => c.id === cut.id);
+  const cutIndex = currentScenario.value.cuts.findIndex(cut => cut.id === cut.id);
   if (cutIndex === -1) {
     console.error(`[ScenarioEditor] handleGenerateImagesForCut: Cut with id ${cut.id} not found in current scenario`);
     return;
@@ -697,11 +634,14 @@ async function handleGenerateImagesForCut(cutData: Cut) {
   console.log(`[ScenarioEditor] Final Negative Prompt: ${finalNegativePrompt}`);
 
   // 캐릭터 프롬프트 추출
+  console.log('[ScenarioEditor] Raw cut.characterPrompts before mapping:', JSON.parse(JSON.stringify(cut.characterPrompts?.map(cp => ({ id: cp.id, name: cp.name, prompt: cp.prompt, enabled: cp.enabled, promptItemsCount: cp.promptItems?.length || 0 })) || 'Not available/Empty')));
+
   const characterPrompts = cut.characterPrompts
     ?.filter(cp => cp.enabled !== false)
     ?.map(cp => cp.prompt) || [];
 
-  console.log(`[ScenarioEditor] Character Prompts: ${characterPrompts.join(' | ')}`);
+    console.log(`[ScenarioEditor] Mapped characterPrompts (strings for API): ${JSON.stringify(characterPrompts)}`); // 기존 로그 수정하여 JSON으로 명확히
+
 
   // 이미지 생성 상태 초기화
   cutImageGenerationStatus.value = { 
@@ -730,6 +670,10 @@ async function handleGenerateImagesForCut(cutData: Cut) {
     if (currentViewingImage) {
       scenarioStore.setSelectedImage(currentViewingImage);
     }
+     // **** 중요 로그 추가 ****
+     console.log(`[ScenarioEditor] BEFORE calling scenarioUseCases.generateImagesForCut. Argument characterPrompts:`, JSON.parse(JSON.stringify(characterPrompts)));
+    // **** 중요 로그 추가 끝 ****
+    
     
     const generatedImages = await scenarioUseCases.generateImagesForCut(
       cut.id, 
@@ -1166,13 +1110,7 @@ onMounted(async () => {
   flex: 1;
 }
 
-.scenario-title-input {
-  width: 100%;
-  padding: 0.5rem;
-  font-size: 1.2rem;
-  border: 1px solid #ddd;
-  border-radius: 4px;
-}
+
 
 .scenario-actions {
   display: flex;

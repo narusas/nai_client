@@ -7,12 +7,13 @@
           v-model="charPrompt.name" 
           placeholder="캐릭터 이름"
           class="character-name-input"
+          @input="updateName"
         />
         
         <!-- 위치 입력 필드를 이름 옵에 배치 -->
         <div class="position-section">
           <label>위치 (x, y)</label>
-          <div class="position-inputs">
+          <div v-if="charPrompt && charPrompt.position" class="position-inputs">
             <input 
               type="number" 
               v-model.number="charPrompt.position.x" 
@@ -31,6 +32,10 @@
               placeholder="Y (0-1)"
               @change="updatePosition('y', $event.target.value)"
             />
+          </div>
+          <div v-else class="position-inputs-loading">
+            <!-- 위치 정보 로딩 중 또는 기본값 설정 필요 메시지 (옵션) -->
+            <small>위치 정보 없음</small>
           </div>
         </div>
       </div>
@@ -60,94 +65,139 @@
     
     <!-- PromptItemList 컴포넌트 사용 -->
     <PromptItemList
-      :model-value="[charPrompt]"
-      @update:model-value="updateCharPromptItems"
-      @add-prompt-item="addCharPromptItem"
-      @remove-prompt-item="removeCharPromptItem"
-      @toggle-enabled="toggleEnabled"
-      @update-probability="updateProbability"
-      @update-prompt="updatePrompt"
-      add-button-text=""
-    >
-      <template #additional-fields="{ item, index }">
-        <!-- 위치 입력 필드는 이미 헤더에 추가했으므로 여기서는 제거 -->
-      </template>
-    </PromptItemList>
+      :modelValue="charPrompt.promptItems" 
+      @update:modelValue="updateCharPromptItems"
+      add-button-text="프롬프트 아이템 추가"
+      @remove-prompt-item="removeCharPromptItemFromList" 
+      @toggle-enabled="togglePromptItemEnabled" 
+      @update-probability="updatePromptItemProbability"
+      @update-prompt="updatePromptItemField" 
+    />
   </div>
 </template>
 
 <script setup lang="ts">
 import PromptItemList from './PromptItemList.vue';
+import type { CharacterPrompt, PromptItem } from '@/domain/scenario/entities';
 
-const props = defineProps({
-  charPrompt: {
-    type: Object,
-    required: true
-  },
-  charIndex: {
-    type: Number,
-    required: true
-  },
-  totalCharacters: {
-    type: Number,
-    required: true
-  }
-});
+interface Props {
+  charPrompt: CharacterPrompt;
+  charIndex: number;
+  totalCharacters: number;
+}
+
+const props = defineProps<Props>();
 
 const emit = defineEmits(['update:characterPrompt', 'remove', 'move-up', 'move-down']);
 
+// Helper function to generate combined prompt string from promptItems
+function generateCombinedPrompt(items: PromptItem[] | undefined): string {
+  if (!items) {
+    return '';
+  }
+  return items
+    .filter(item => item.enabled !== false) // Filter only enabled items
+    .map(item => item.prompt)              // Get the prompt text of each item
+    .join(', ');                           // Join with comma and space
+}
+
+// --- Character Prompt Data Update --- 
+function updateName(event: Event) {
+  const newName = (event.target as HTMLInputElement).value;
+  emit('update:characterPrompt', { ...props.charPrompt, name: newName });
+}
+
+// --- PromptItemList Event Handlers ---
+// PromptItemList에서 전체 promptItems 배열을 받아서 업데이트
+function updateCharPromptItems(newPromptItems: PromptItem[]) {
+  console.log('[CharacterPrompt] updateCharPromptItems:', newPromptItems);
+  const newCombinedPrompt = generateCombinedPrompt(newPromptItems);
+  emit('update:characterPrompt', { 
+    ...props.charPrompt, 
+    promptItems: newPromptItems,
+    prompt: newCombinedPrompt
+  });
+}
+
+// removeCharPromptItem 함수는 PromptItemList에서 index를 받음
+// 또는 PromptItemList에서 id를 받아서 처리할 수도 있음. 우선 index 기반으로 가정.
+function removeCharPromptItemFromList(index: number) { // 함수 이름 변경
+  const updatedPromptItems = [...props.charPrompt.promptItems];
+  updatedPromptItems.splice(index, 1);
+  const newCombinedPrompt = generateCombinedPrompt(updatedPromptItems);
+  emit('update:characterPrompt', { 
+    ...props.charPrompt, 
+    promptItems: updatedPromptItems,
+    prompt: newCombinedPrompt
+  });
+}
+
+// toggleEnabled 함수는 PromptItemList에서 index와 enabled 상태를 받음
+function togglePromptItemEnabled({ index, enabled }: { index: number; enabled: boolean }) { // 함수 이름 변경 및 파라미터 수정
+  const updatedPromptItems = props.charPrompt.promptItems.map((item, i) => {
+    if (i === index) {
+      return { ...item, enabled: enabled };
+    }
+    return item;
+  });
+  const newCombinedPrompt = generateCombinedPrompt(updatedPromptItems);
+  emit('update:characterPrompt', { 
+    ...props.charPrompt, 
+    promptItems: updatedPromptItems,
+    prompt: newCombinedPrompt
+  });
+}
+
+// updateProbability 함수는 PromptItemList에서 index와 probability 값을 받음
+function updatePromptItemProbability({ index, probability }: { index: number; probability: number }) { // 함수 이름 변경 및 파라미터 수정
+  const updatedPromptItems = props.charPrompt.promptItems.map((item, i) => {
+    if (i === index) {
+      return { ...item, probability: probability };
+    }
+    return item;
+  });
+  const newCombinedPrompt = generateCombinedPrompt(updatedPromptItems);
+  emit('update:characterPrompt', { 
+    ...props.charPrompt, 
+    promptItems: updatedPromptItems,
+    prompt: newCombinedPrompt
+  });
+}
+
+// updatePrompt 함수는 PromptItemList에서 index, field, value를 받음
+function updatePromptItemField({ index, field, value }: { index: number; field: 'prompt' | 'negativePrompt'; value: string }) { // 함수 이름 변경 및 파라미터 수정
+  const updatedPromptItems = props.charPrompt.promptItems.map((item, i) => {
+    if (i === index) {
+      return { ...item, [field]: value };
+    }
+    return item;
+  });
+  const newCombinedPrompt = generateCombinedPrompt(updatedPromptItems);
+  emit('update:characterPrompt', { 
+    ...props.charPrompt, 
+    promptItems: updatedPromptItems,
+    prompt: newCombinedPrompt
+  });
+}
+
+// 캐릭터 자체를 삭제 (CutCard에서 호출됨)
 function remove() {
   emit('remove');
 }
 
+// 캐릭터 순서 변경 (CutCard에서 호출됨)
 function moveUp() {
-  if (props.charIndex > 0) {
-    emit('move-up');
-  }
+  emit('move-up');
 }
 
 function moveDown() {
-  if (props.charIndex < props.totalCharacters - 1) {
-    emit('move-down');
-  }
-}
-
-// PromptItemList 컴포넌트와 연동하기 위한 메서드들
-function updateCharPromptItems(items: any[]) {
-  if (items && items.length > 0) {
-    emit('update:characterPrompt', items[0]);
-  }
-}
-
-function addCharPromptItem() {
-  // 캐릭터 프롬프트에서는 추가 버튼을 숨겼으므로 실제로 호출되지 않음
-}
-
-function removeCharPromptItem() {
-  // 캐릭터 프롬프트에서는 PromptItemList의 삭제 대신 상단의 삭제 버튼 사용
-  remove();
-}
-
-function toggleEnabled(payload: { index: number, enabled: boolean }) {
-  const updatedCharPrompt = { ...props.charPrompt, enabled: payload.enabled };
-  emit('update:characterPrompt', updatedCharPrompt);
-}
-
-function updateProbability(payload: { index: number, probability: number }) {
-  const updatedCharPrompt = { ...props.charPrompt, probability: payload.probability };
-  emit('update:characterPrompt', updatedCharPrompt);
-}
-
-function updatePrompt(payload: { index: number, field: 'prompt' | 'negativePrompt', value: string }) {
-  const updatedCharPrompt = { ...props.charPrompt, [payload.field]: payload.value };
-  emit('update:characterPrompt', updatedCharPrompt);
+  emit('move-down');
 }
 
 function updatePosition(axis: 'x' | 'y', value: string) {
-  const position = { ...props.charPrompt.position };
-  position[axis] = parseFloat(value);
-  const updatedCharPrompt = { ...props.charPrompt, position };
-  emit('update:characterPrompt', updatedCharPrompt);
+  const currentPosition = props.charPrompt.position ? { ...props.charPrompt.position } : { x: 0.5, y: 0.5 };
+  currentPosition[axis] = parseFloat(value);
+  emit('update:characterPrompt', { ...props.charPrompt, position: currentPosition });
 }
 </script>
 

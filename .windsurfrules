@@ -31,5 +31,5 @@
     axios
     jszip
     uuid
-
 8. 설정값이나 데이터를 저장할때는 localStorage를 사용할것. 단 이미지 바이너리를 저장할때는 indexed db를 사용할것. 이것을 제외하고는 indexed db를 사용하지 말것.
+9. 
