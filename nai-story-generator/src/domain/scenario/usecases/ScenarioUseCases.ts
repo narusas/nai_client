@@ -296,6 +296,8 @@ export class ScenarioUseCases {
    * @param imageCount 생성할 이미지 수
    * @param width 이미지 너비
    * @param height 이미지 높이
+   * @param seed 이미지 생성 시드값
+   * @param onImageGenerated 이미지가 한 장씩 생성될 때마다 호출되는 콜백 함수
    * @returns 생성된 이미지 데이터 목록
    */
   async generateImagesForCut(
@@ -306,7 +308,8 @@ export class ScenarioUseCases {
     imageCount: number = 1,
     width: number = 512,
     height: number = 512,
-    seed?: number
+    seed?: number,
+    onImageGenerated?: (imageData: ImageData) => void
   ): Promise<ImageData[]> {
     try {
       console.log(`[ScenarioUseCases] generateImagesForCut - cutId: ${cutId}`);
@@ -359,7 +362,8 @@ export class ScenarioUseCases {
         seed,
         {},
         scenarioId,
-        cutIndex
+        cutIndex,
+        onImageGenerated // 이미지가 한 장씩 생성될 때마다 호출되는 콜백 함수 전달
       );
       
       console.log(`[ScenarioUseCases] Successfully generated ${generatedImages.length} images`);
@@ -398,6 +402,7 @@ export class ScenarioUseCases {
    * @param otherParams 기타 추가 파라미터 (선택적)
    * @param scenarioId 시나리오 ID (선택적, 다운로드 시 사용)
    * @param cutIndex 컷 인덱스 (선택적, 다운로드 시 사용)
+   * @param onImageGenerated 이미지가 한 장씩 생성될 때마다 호출되는 콜백 함수
    * @returns 생성된 이미지 데이터 목록
    */
   async generateImages(
@@ -410,7 +415,8 @@ export class ScenarioUseCases {
     seed?: number,
     otherParams?: Record<string, any>,
     scenarioId?: string,
-    cutIndex?: number
+    cutIndex?: number,
+    onImageGenerated?: (imageData: ImageData) => void
   ): Promise<ImageData[]> {
     console.log('[ScenarioUseCases] generateImages - Parameters:');
     console.log(`  Main Prompt: ${mainPrompt}`);
@@ -438,7 +444,8 @@ export class ScenarioUseCases {
       seed,
       otherParams,
       scenarioId,
-      cutIndex
+      cutIndex,
+      onImageGenerated // 이미지가 한 장씩 생성될 때마다 호출되는 콜백 함수 전달
     );
   }
 

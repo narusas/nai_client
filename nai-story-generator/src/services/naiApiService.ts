@@ -500,7 +500,8 @@ export function useNaiApiService() {
     characterPromptStrings?: string[], 
     params?: { width?: number; height?: number; seed?: number | string; [key: string]: any },
     scenarioId?: string,
-    cutIndex?: number
+    cutIndex?: number,
+    onImageGenerated?: (imageUrl: string) => void // 이미지가 한 장씩 생성될 때마다 호출되는 콜백 함수
   ): Promise<string[]> {
     console.log('[naiApiService.generateImages] CALLED. Received scenarioId:', scenarioId, 'Received cutIndex:', cutIndex);
 
@@ -515,109 +516,135 @@ export function useNaiApiService() {
       console.warn('부정 프롬프트가 undefined로 전달되었습니다. 기본값을 사용합니다.');
       negativePromptInput = 'nsfw, blurry, lowres, error, worst quality, bad quality';
     }
-    const preparedParams = _prepareImageGenerationParameters(prompt, negativePromptInput, characterPromptStrings, params);
-    const { token, width, height, seedAsNumber, currentNegativePrompt, domainCharacterPrompts, baseSettings } = preparedParams;
     
-    // 요청 데이터 생성 - let으로 변경하여 재할당 가능하도록 함
-    let requestData = _buildApiRequestData(prompt, count, preparedParams);
+    // 모든 생성된 이미지를 저장할 배열
+    const allGeneratedImages: string[] = [];
     
-    // 요청 데이터 문제 해결
-    if (baseSettings.model === 'nai-diffusion-4-full' || baseSettings.model === 'nai-diffusion-4') {
-      // 전체 요청 객체 재구성
-      // 이미지 생성에 필요한 모든 정보를 포함하도록 수정
-      requestData = {
-        input: prompt, // input 필드 추가
-        model: baseSettings.model,
-        action: "generate",
-        parameters: {
-          params_version: 3,
-          width: width, // 원래 요청한 해상도 사용
-          height: height, // 원래 요청한 해상도 사용
-          scale: baseSettings.scale,
-          sampler: baseSettings.sampler,
-          steps: baseSettings.steps,
-          n_samples: count,
-          ucPreset: 0,
-          qualityToggle: baseSettings.qualityToggle,
-          autoSmea: baseSettings.smea,
-          dynamic_thresholding: baseSettings.dynamicThresholding,
-          controlnet_strength: 1,
-          legacy: false,
-          add_original_image: true,
-          cfg_rescale: baseSettings.cfgRescale,
-          noise_schedule: baseSettings.noiseSchedule,
-          legacy_v3_extend: false,
-          skip_cfg_above_sigma: null,
-          use_coords: true,
-          legacy_uc: false,
-          normalize_reference_strength_multiple: true,
-          seed: seedAsNumber,
-          characterPrompts: domainCharacterPrompts.map(cp => ({
-            prompt: cp.prompt,
-            uc: cp.uc || "",
-            center: { x: cp.center.x, y: cp.center.y },
-            enabled: true
-          })),
-          v4_prompt: {
-            caption: {
-              base_caption: prompt, // 프롬프트 정보 추가
-              char_captions: domainCharacterPrompts.map(cp => ({
-                char_caption: cp.prompt,
-                centers: [{ x: cp.center.x, y: cp.center.y }]
-              }))
-            },
-            use_coords: true,
-            use_order: true
-          },
-          v4_negative_prompt: {
-            caption: {
-              base_caption: currentNegativePrompt, // 부정 프롬프트 정보 추가
-              char_captions: domainCharacterPrompts.map(cp => ({
-                char_caption: cp.uc || "lowres, aliasing, ",
-                centers: [{ x: cp.center.x, y: cp.center.y }]
-              }))
-            },
-            legacy_uc: false
-          },
-          negative_prompt: currentNegativePrompt,
-          deliberate_euler_ancestral_bug: false,
-          prefer_brownian: true
-        }
-      };
-      
-      console.log(`요청 데이터 재구성 완료: 해상도 ${width} x ${height}, 프롬프트 포함`);
-    }
-
     try {
-    // 요청 데이터 로깅 강화
-    console.log('이미지 생성 요청 시작:', {
-      prompt,
-      model: baseSettings.model,
-      count
-    });
-    
-    // 전체 요청 데이터 로깅 (디버깅용)
-    console.log('전체 API 요청 데이터:', JSON.stringify(requestData, null, 2));
-    
-    const apiUrl = baseSettings.apiUrl || 'https://image.novelai.net/ai/generate-image';
-    
-    // API 호출 및 응답 파싱
-    console.log('이미지 생성 API 호출 시작:', apiUrl);
-    const images = await _callNaiApiAndParseResponse(apiUrl, requestData, token);
+      // 비용 청구 최소화를 위해 n_samples를 항상 1로 설정하고 여러 번 호출
+      console.log(`[naiApiService.generateImages] 요청된 이미지 수: ${count}`);
+      console.log(`[naiApiService.generateImages] n_samples=1로 ${count}번 API 호출 방식으로 변경`);
       
-      if (images.length > 0) {
-        await saveImagesToServer(images, prompt);
+      const preparedParams = _prepareImageGenerationParameters(prompt, negativePromptInput, characterPromptStrings, params);
+      const { token, width, height, seedAsNumber, currentNegativePrompt, domainCharacterPrompts, baseSettings } = preparedParams;
+      const apiUrl = baseSettings.apiUrl || 'https://image.novelai.net/ai/generate-image';
+      
+      // 각 이미지 생성을 위한 반복문
+      for (let i = 0; i < count; i++) {
+        // 시드 처리 - 특별히 지정되지 않았다면 빈 값으로 처리
+        let currentSeed = undefined;
+        if (seedAsNumber !== undefined && seedAsNumber !== null) {
+          // 시드가 지정된 경우에만 시드에 i를 더함
+          currentSeed = seedAsNumber + i;
+          console.log(`[naiApiService.generateImages] 이미지 ${i+1}/${count} 생성 중, 시드: ${currentSeed}`);
+        } else {
+          console.log(`[naiApiService.generateImages] 이미지 ${i+1}/${count} 생성 중, 시드: 임의 생성`);
+        }
+        
+        // 요청 데이터 생성 - 항상 n_samples=1로 설정
+        let requestData = _buildApiRequestData(prompt, 1, {
+          ...preparedParams,
+          seedAsNumber: currentSeed
+        });
+        
+        // 요청 데이터 문제 해결
+        if (baseSettings.model === 'nai-diffusion-4-full' || baseSettings.model === 'nai-diffusion-4') {
+          // 전체 요청 객체 재구성
+          requestData = {
+            input: prompt,
+            model: baseSettings.model,
+            action: "generate",
+            parameters: {
+              params_version: 3,
+              width: width,
+              height: height,
+              scale: baseSettings.scale,
+              sampler: baseSettings.sampler,
+              steps: baseSettings.steps,
+              n_samples: 1, // 항상 1로 설정
+              ucPreset: 0,
+              qualityToggle: baseSettings.qualityToggle,
+              autoSmea: baseSettings.smea,
+              dynamic_thresholding: baseSettings.dynamicThresholding,
+              controlnet_strength: 1,
+              legacy: false,
+              add_original_image: true,
+              cfg_rescale: baseSettings.cfgRescale,
+              noise_schedule: baseSettings.noiseSchedule,
+              legacy_v3_extend: false,
+              skip_cfg_above_sigma: null,
+              use_coords: true,
+              legacy_uc: false,
+              normalize_reference_strength_multiple: true,
+              seed: currentSeed, // 현재 반복에 맞는 시드 사용 (지정되지 않았다면 undefined로 임의 생성)
+              characterPrompts: domainCharacterPrompts.map(cp => ({
+                prompt: cp.prompt,
+                uc: cp.uc || "",
+                center: { x: cp.center.x, y: cp.center.y },
+                enabled: true
+              })),
+              v4_prompt: {
+                caption: {
+                  base_caption: prompt,
+                  char_captions: domainCharacterPrompts.map(cp => ({
+                    char_caption: cp.prompt,
+                    centers: [{ x: cp.center.x, y: cp.center.y }]
+                  }))
+                },
+                use_coords: true,
+                use_order: true
+              },
+              v4_negative_prompt: {
+                caption: {
+                  base_caption: currentNegativePrompt,
+                  char_captions: domainCharacterPrompts.map(cp => ({
+                    char_caption: cp.uc || "lowres, aliasing, ",
+                    centers: [{ x: cp.center.x, y: cp.center.y }]
+                  }))
+                },
+                legacy_uc: false
+              },
+              negative_prompt: currentNegativePrompt,
+              deliberate_euler_ancestral_bug: false,
+              prefer_brownian: true
+            }
+          };
+        }
+        
+        // API 호출 및 응답 파싱
+        console.log(`[naiApiService.generateImages] 이미지 ${i+1}/${count} API 호출 시작`);
+        const images = await _callNaiApiAndParseResponse(apiUrl, requestData, token);
+        
+        if (images.length > 0) {
+          // 생성된 이미지를 전체 배열에 추가
+          allGeneratedImages.push(...images);
+          console.log(`[naiApiService.generateImages] 이미지 ${i+1}/${count} 생성 완료`);
+          
+          // 이미지가 생성될 때마다 콜백 함수 호출
+          if (onImageGenerated && images[0]) {
+            console.log(`[naiApiService.generateImages] 이미지 ${i+1}/${count} 뷰어 갱신`);
+            onImageGenerated(images[0]);
+          }
+        } else {
+          console.warn(`[naiApiService.generateImages] 이미지 ${i+1}/${count} 생성 실패`);
+        }
+      }
+      
+      // 모든 이미지 생성 완료 후 처리
+      if (allGeneratedImages.length > 0) {
+        console.log(`[naiApiService.generateImages] 총 ${allGeneratedImages.length}개 이미지 생성 완료`);
+        await saveImagesToServer(allGeneratedImages, prompt);
 
-        // 이미지 다운로드 로직 추가
+        // 이미지 다운로드 로직
         if (scenarioId && cutIndex !== undefined) {
           const shortScenarioId = scenarioId.substring(0, 10);
           const formattedCutIndex = cutIndex.toString().padStart(2, '0');
           const timestamp = getCurrentTimestamp();
-          // 이미지 순번 추가
-          for (let i = 0; i < images.length; i++) {
+          
+          for (let i = 0; i < allGeneratedImages.length; i++) {
             const filename = `nai_${shortScenarioId}_${formattedCutIndex}_${timestamp}_${i + 1}.png`;
             console.log(`[naiApiService.generateImages] Preparing to download image as: ${filename}`);
-            await downloadImageViaBrowser(images[i], filename);
+            await downloadImageViaBrowser(allGeneratedImages[i], filename);
           }
         } else {
           console.warn('[naiApiService.generateImages] scenarioId 또는 cutIndex가 제공되지 않아 이미지 다운로드를 건너뜁니다.');
@@ -626,7 +653,7 @@ export function useNaiApiService() {
         console.warn('생성된 이미지가 없습니다.');
       }
       
-      return images;
+      return allGeneratedImages;
     } catch (error: any) {
       console.error('NAI API 호출 중 오류 발생:', error);
       console.error('오류 상세 정보:', {

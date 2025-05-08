@@ -17,6 +17,7 @@ export interface ImageGenerationService {
    * @param otherParams 기타 추가 파라미터 (선택적)
    * @param scenarioId 시나리오 ID (선택적)
    * @param cutIndex 컷의 인덱스 (선택적)
+   * @param onImageGenerated 이미지가 한 장씩 생성될 때마다 호출되는 콜백 함수
    * @returns 생성된 이미지 데이터 목록
    */
   generateImages(
@@ -29,6 +30,7 @@ export interface ImageGenerationService {
     seed?: number,
     otherParams?: Record<string, any>,
     scenarioId?: string,
-    cutIndex?: number
+    cutIndex?: number,
+    onImageGenerated?: (imageData: ImageData) => void
   ): Promise<ImageData[]>;
 }

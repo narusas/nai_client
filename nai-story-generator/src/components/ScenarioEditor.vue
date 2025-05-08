@@ -581,21 +581,12 @@ async function handleGenerateImagesForCut(cutData: Cut) {
     return;
   }
 
-  // **** 중요 로그 추가: 함수 시작 시 cut.characterPrompts 상태 확인 ****
-  console.log('[ScenarioEditor] Start of handleGenerateImagesForCut. Initial cut.characterPrompts:', JSON.parse(JSON.stringify(cut.characterPrompts?.map(cp => ({ id: cp.id, name: cp.name, prompt: cp.prompt, enabled: cp.enabled, promptItemsCount: cp.promptItems?.length || 0 })) || 'Not available/Empty')));
-  // **** 중요 로그 추가 끝 ****
-
-  console.log('[ScenarioEditor] Generating images for cut:', 
-    JSON.parse(JSON.stringify(cut))); // 반응형 프록시를 일반 객체로 변환하여 로깅
-  
   // 현재 시나리오에서 컷 인덱스 확인
-  const cutIndex = currentScenario.value.cuts.findIndex(cut => cut.id === cut.id);
+  const cutIndex = currentScenario.value.cuts.findIndex(c => c.id === cut.id);
   if (cutIndex === -1) {
     console.error(`[ScenarioEditor] handleGenerateImagesForCut: Cut with id ${cut.id} not found in current scenario`);
     return;
   }
-  
-  console.log(`[ScenarioEditor] Generating images for cut ${cut.id} at index ${cutIndex} in scenario ${currentScenario.value.id}`);
   
   // 메인 프롬프트 추출
   const mainPrompt = cut.mainPromptItems
@@ -685,60 +676,58 @@ async function handleGenerateImagesForCut(cutData: Cut) {
     // **** 중요 로그 추가 끝 ****
     
     
+    // 이미지가 한 장씩 생성될 때마다 호출될 콜백 함수 정의
+    const handleSingleImageGenerated = async (imageData: ImageData) => {
+      console.log(`[ScenarioEditor] 이미지 한 장 생성 완료, 뷰어 갱신:`, imageData);
+      
+      // 생성된 이미지를 컷에 추가
+      if (!cut.generatedImages) cut.generatedImages = [];
+      cut.generatedImages.push(imageData);
+      
+      // 대표 이미지가 없으면 첫 번째 이미지를 대표로 설정
+      if (!cut.representativeImage) {
+        cut.representativeImage = imageData.url;
+        scenarioUseCases.saveRepresentativeImage(cut.id, imageData.url).catch(error => {
+          console.error('대표 이미지 저장 실패:', error);
+        });
+      }
+      
+      // 이미지를 IndexedDB에 저장
+      try {
+        // 이미지 ID가 없는 경우 임의로 생성
+        const imageId = imageData.id || `${cut.id}-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+        await scenarioUseCases.saveGeneratedImage(imageId, imageData.url, currentScenario.value.id, cut.id);
+        console.log(`이미지 저장 완료: ${imageId}`);
+      } catch (error) {
+        console.error('이미지 저장 중 오류:', error);
+      }
+      
+      // 이미지 뷰어 갱신
+      handleViewImage(imageData);
+    };
+    
     const generatedImages = await scenarioUseCases.generateImagesForCut(
       cut.id, 
       finalPrompt, 
       finalNegativePrompt,
       characterPrompts,
-      imageCount,
-      width,
-      height,
-      cut.seed
+      cutData.imageCount || 1,
+      cut.selectedResolutions?.[0].width || 512,
+      cut.selectedResolutions?.[0].height || 512,
+      cut.seed,
+      handleSingleImageGenerated // 이미지가 한 장씩 생성될 때마다 호출되는 콜백 함수 전달
     );
 
-    // 생성된 이미지 처리
+    // 생성된 이미지 처리 - 이미 한 장씩 처리되었으므로 추가 처리만 수행
     if (generatedImages && generatedImages.length > 0) {
-      // 생성된 이미지 데이터 업데이트
-      if (!cut.generatedImages) cut.generatedImages = [];
-      
-      // 새로 생성된 이미지를 기존 이미지 배열에 추가
-      cut.generatedImages = [...cut.generatedImages, ...generatedImages];
-      
-      // 대표 이미지가 없으면 첫 번째 이미지를 대표로 설정
-      if (!cut.representativeImage && generatedImages[0]) {
-        cut.representativeImage = generatedImages[0].url;
-        // 이미지 저장소에도 대표 이미지 정보 저장
-        await scenarioUseCases.saveRepresentativeImage(cut.id, generatedImages[0].url);
-      }
-      
-      // 모든 생성된 이미지를 IndexedDB에 저장
-      for (const image of generatedImages) {
-        try {
-          // 이미지 ID가 없는 경우 임의로 생성
-          const imageId = image.id || `${cut.id}-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
-          await scenarioUseCases.saveGeneratedImage(imageId, image.url, scenario.value.id, cut.id);
-          console.log(`이미지 저장 완료: ${imageId}`);
-        } catch (error) {
-          console.error('이미지 저장 중 오류:', error);
-        }
-      }
-      
-      // 생성된 첫 번째 이미지를 이미지 뷰어에 바로 보여주기
-      if (generatedImages[0]) {
-        // 약간의 지연 후 이미지 뷰어 업데이트 (깨빡임 방지)
-        setTimeout(() => {
-          handleViewImage(generatedImages[0]);
-        }, 100);
-      }
-
       // 네거티브 프롬프트 히스토리 추가
       if (finalNegativePrompt && !negativePromptHistory.value.includes(finalNegativePrompt)) {
         negativePromptHistory.value.push(finalNegativePrompt);
       }
 
-      console.log(`[ScenarioEditor] Generated ${generatedImages.length} images for cut ${cut.id}`);
+      console.log(`[ScenarioEditor] 총 ${generatedImages.length}개 이미지가 생성되었습니다.`);
     } else {
-      console.warn(`[ScenarioEditor] No images were generated for cut ${cut.id}`);
+      console.warn(`[ScenarioEditor] 생성된 이미지가 없습니다.`);
     }
   } catch (error) {
     console.error(`[ScenarioEditor] Error generating images for cut ${cut.id}:`, error);

@@ -3,30 +3,43 @@
     <div class="cut-header">
       <h3>#{{ props.cutIndex + 1 }}</h3>
       <div class="cut-controls">
-        <input 
-          type="number" 
-          v-model.number="imageCountWritable" 
-          min="1" 
-          max="10" 
-          class="image-count-input"
-          title="생성할 이미지 수"
-          @change="updateCutData" 
-        />
-        <button 
-          @click="emitGenerateImages" 
-          class="generate-button icon-button"
-          :disabled="props.isGeneratingImage"
-          :class="{ 'disabled': props.isGeneratingImage }"
-          title="이미지 생성"
-        >
-          <font-awesome-icon :icon="props.isGeneratingImage ? 'fa-solid fa-spinner fa-spin' : 'fa-solid fa-wand-magic-sparkles'" />
-        </button>
-        <button @click="emitRemoveCut" class="remove-button icon-button" title="삭제">
-          <font-awesome-icon icon="fa-solid fa-trash" />
-        </button>
-        <button @click="togglePromptsVisibility" class="toggle-prompts-button icon-button" title="프롬프트/해상도 보이기/숨기기">
-          <font-awesome-icon :icon="showPrompts ? 'fa-solid fa-gear' : 'fa-solid fa-gear'" />
-        </button>
+        <div class="left-controls">
+          <button 
+            @click="emitGenerateSingleImage" 
+            class="generate-button icon-button"
+            :disabled="props.isGeneratingImage"
+            :class="{ 'disabled': props.isGeneratingImage }"
+            title="단일 이미지 생성"
+          >
+            <font-awesome-icon :icon="props.isGeneratingImage ? 'fa-solid fa-spinner fa-spin' : 'fa-solid fa-wand-magic-sparkles'" />
+          </button>
+          <input 
+            type="number" 
+            v-model.number="imageCountWritable" 
+            min="1" 
+            max="10" 
+            class="image-count-input"
+            title="생성할 이미지 수"
+            @change="updateCutData" 
+          />
+          <button 
+            @click="emitGenerateImages" 
+            class="generate-button icon-button"
+            :disabled="props.isGeneratingImage"
+            :class="{ 'disabled': props.isGeneratingImage }"
+            title="여러 이미지 생성"
+          >
+            <font-awesome-icon :icon="props.isGeneratingImage ? 'fa-solid fa-spinner fa-spin' : 'fa-solid fa-images'" />
+          </button>
+          <button @click="togglePromptsVisibility" class="toggle-prompts-button icon-button" title="프롬프트/해상도 보이기/숨기기">
+            <font-awesome-icon :icon="showPrompts ? 'fa-solid fa-gear' : 'fa-solid fa-gear'" />
+          </button>
+        </div>
+        <div class="right-controls">
+          <button @click="emitRemoveCut" class="remove-button icon-button" title="삭제">
+            <font-awesome-icon icon="fa-solid fa-trash" />
+          </button>
+        </div>
       </div>
     </div>
     
@@ -383,8 +396,16 @@ const moveCharacterPromptDown = (index: number) => {
 };
 
 // --- Image Generation and Selection ---
+// 단일 이미지 생성 함수
+const emitGenerateSingleImage = () => {
+  // 단일 이미지 생성 시에는 imageCount를 1로 설정하여 전달
+  const currentCutData = { ...props.cutData, imageCount: 1 };
+  emit('generateImages', currentCutData);
+};
+
+// 여러 이미지 생성 함수 (설정된 이미지 수만큼 생성)
 const emitGenerateImages = () => {
-  // Ensure latest imageCount is part of the emitted cutData
+  // 설정된 이미지 수만큼 생성
   const currentCutData = { ...props.cutData, imageCount: imageCountWritable.value };
   emit('generateImages', currentCutData);
 };
@@ -472,9 +493,23 @@ const emitRemoveCut = () => {
 .cut-controls {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 0.25rem;
   flex-shrink: 0;
   white-space: nowrap;
+  width: 100%;
+}
+
+.left-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.right-controls {
+  display: flex;
+  align-items: center;
+  margin-left: auto;
 }
 
 .cut-header h3 {
