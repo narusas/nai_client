@@ -21,6 +21,21 @@ interface NaiApiResponse {
   [key: string]: any;
 }
 
+// 이미지 생성 취소 상태를 관리할 변수
+// 실제 취소 상태를 저장하는 변수
+// 이 변수는 여러 호출에서 공유되어야 하므로 모듈 레벨에서 선언
+// 이미지 생성이 완료되면 false로 리셋
+// 이미지 생성이 시작되면 false로 설정
+// ESC 키를 누르면 true로 설정
+let isGenerationCancelled = false;
+
+// 이미지 생성 취소 함수
+// 외부에서 호출할 수 있도록 내보낼 함수
+export function cancelImageGeneration() {
+  console.log('[naiApiService] 이미지 생성 취소 요청');
+  isGenerationCancelled = true;
+}
+
 export function useNaiApiService() {
   const settingsStore = useNaiSettingsStore();
 
@@ -503,6 +518,8 @@ export function useNaiApiService() {
     cutIndex?: number,
     onImageGenerated?: (imageUrl: string) => void // 이미지가 한 장씩 생성될 때마다 호출되는 콜백 함수
   ): Promise<string[]> {
+    // 이미지 생성 시작 시 취소 상태 초기화
+    isGenerationCancelled = false;
     console.log('[naiApiService.generateImages] CALLED. Received scenarioId:', scenarioId, 'Received cutIndex:', cutIndex);
 
     // 프롬프트가 undefined일 때 기본값 제공
@@ -531,6 +548,11 @@ export function useNaiApiService() {
       
       // 각 이미지 생성을 위한 반복문
       for (let i = 0; i < count; i++) {
+        // 취소 상태 확인
+        if (isGenerationCancelled) {
+          console.log(`[naiApiService.generateImages] 이미지 생성 취소 요청으로 이미지 ${i+1}/${count} 부터 생성 중단`);
+          break; // 반복문 종료
+        }
         // 시드 처리 - 특별히 지정되지 않았다면 빈 값으로 처리
         let currentSeed = undefined;
         if (seedAsNumber !== undefined && seedAsNumber !== null) {

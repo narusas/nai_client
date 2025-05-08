@@ -173,9 +173,10 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, computed, watch, nextTick, provide } from 'vue';
-import { useNaiSettingsStore } from '@/stores/naiSettings';
-import { useScenarioStore } from '@/stores/scenario';
+import { ref, onMounted, onUnmounted, computed, watch, nextTick, provide } from 'vue';
+import { useNaiSettingsStore } from '../stores/naiSettings';
+import { useScenarioStore } from '../stores/scenario';
+import { cancelImageGeneration } from '../services/naiApiService'; // 이미지 생성 취소 함수 추가
 import { ScenarioUseCases } from '@/domain/scenario/usecases/ScenarioUseCases';
 import { 
   Scenario, 
@@ -246,6 +247,35 @@ watch(cutImageGenerationStatus, (newStatus) => {
   const isAnyGenerating = Object.values(newStatus).some(status => status === true);
   scenarioStore.setAnyImageGenerating(isAnyGenerating);
 }, { deep: true });
+
+// ESC 키 이벤트 핸들러 - 이미지 생성 취소
+const handleKeyDown = (event: KeyboardEvent) => {
+  // ESC 키가 눌렸을 때
+  if (event.key === 'Escape') {
+    // 이미지 생성 중인지 확인
+    const isGenerating = Object.values(cutImageGenerationStatus.value).some(status => status === true);
+    if (isGenerating) {
+      console.log('[ScenarioEditor] ESC 키 감지, 이미지 생성 취소 요청');
+      // 이미지 생성 취소 함수 호출
+      cancelImageGeneration();
+    }
+  }
+};
+
+// 컴포넌트 마운트 시 이벤트 리스너 등록
+onMounted(() => {
+  // ESC 키 이벤트 리스너 등록
+  window.addEventListener('keydown', handleKeyDown);
+  
+  // 시나리오 목록 불러오기
+  loadAllScenarioSummaries();
+});
+
+// 컴포넌트 언마운트 시 이벤트 리스너 제거
+onUnmounted(() => {
+  // ESC 키 이벤트 리스너 제거
+  window.removeEventListener('keydown', handleKeyDown);
+});
 
 // --- Methods ---
 // --- UI Toggles ---
